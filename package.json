@@ -1,0 +1,16 @@
+{
+  "name": "csh2-belgium-backtest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-site": "node scripts/prepare-static-site.mjs",
+    "refresh-data": "node scripts/refresh-static-data.mjs",
+    "start": "npm run prepare-site && node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "lightweight-charts": "^5.2.0",
+    "papaparse": "^5.5.4"
+  }
+}

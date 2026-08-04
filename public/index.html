@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSH2 Belgium Backtester</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <h1>CSH2 backtester</h1>
+        <p class="lede">Model dated deposits and withdrawals against CSH2, including estimated transaction tax and realised capital-gains tax.</p>
+      </header>
+      <section class="panel input-panel" aria-labelledby="flows-heading">
+        <div class="section-title"><div><p class="eyebrow">Input</p><h2 id="flows-heading">Cash flows</h2></div><button id="example-button" class="quiet" type="button">Load example</button></div>
+        <section class="input-section csv-import" aria-labelledby="csv-heading">
+          <div><p class="eyebrow">Optional</p><h3 id="csv-heading">Import a CSV</h3></div>
+          <div id="csv-dropzone" class="file-dropzone">
+            <input id="csv-file" class="file-input" type="file" accept=".csv,text/csv" />
+            <label class="file-trigger" for="csv-file">Choose CSV file</label>
+            <p id="csv-file-name" class="file-name" aria-live="polite">or drop a CSV file here</p>
+          </div>
+          <div id="csv-mapping" hidden>
+            <div class="csv-mapping-summary"><p class="eyebrow">Review detected fields</p><p id="csv-preview" class="csv-preview"></p></div>
+            <div class="csv-map-grid"><label>Date column <select id="csv-date-column"></select></label><label>Amount column <select id="csv-amount-column"></select></label><label>Date format <select id="csv-date-format"><option value="iso">Year-Month-Day</option><option value="dmy" selected>Day-Month-Year</option><option value="dmy">Day/Month/Year</option><option value="mdy">Month/Day/Year</option></select></label></div>
+            <div class="csv-import-actions"><button id="csv-import-button" type="button">Add imported cash flows</button></div>
+          </div>
+        </section>
+        <section class="input-section cash-flow-section" aria-label="Cash-flow entries">
+          <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span></span></div>
+          <div id="flows" aria-live="polite"></div>
+          <div class="controls flow-controls"><button id="add-button" class="quiet" type="button">Add cash flow</button></div>
+          <div class="cash-flow-actions">
+            <label class="accrued-interest">Unpaid accrued interest (€)<input id="unpaid-accrued-interest" type="number" min="0" step="0.01" placeholder="0.00" inputmode="decimal" /></label>
+            <button id="clear-data-button" class="quiet" type="button">Clear all data</button>
+          </div>
+        </section>
+        <section class="input-section assumptions" aria-labelledby="assumptions-heading">
+          <div><p class="eyebrow">Assumptions</p><h3 id="assumptions-heading">Calculation settings</h3></div>
+          <div class="setting-grid">
+            <label class="tax-exemption"><input id="capital-gains-exemption" type="checkbox" checked />Apply the annual capital-gains exemption (including carry-forward)</label>
+            <label class="tax-exemption"><input id="buy-whole-shares-only" type="checkbox" checked />Buy whole shares only</label>
+          </div>
+        </section>
+        <div class="controls action-row"><button id="calculate-button" type="button">Calculate with latest data</button></div>
+        <p id="status" class="status"></p>
+      </section>
+      <section id="results" hidden aria-live="polite">
+        <div class="result-heading"><div><p class="eyebrow">As of <span id="valuation-date"></span></p><h2>Backtest result</h2></div><p id="price-source" class="source"></p></div>
+        <div class="metrics">
+          <article class="metric main missed-result"><p id="missed-heading">You missed out on</p><strong id="missed-amount">—</strong><small id="missed-share">—</small><small id="break-even-estimate" hidden></small></article>
+          <article class="metric"><p>Net value if sold today</p><strong id="net-value">—</strong><small>After estimated final TOB and CGT</small></article>
+          <article class="metric"><p>Gross CSH2 value</p><strong id="gross-value">—</strong><small id="units">—</small></article>
+          <article class="metric"><p>Taxes already paid</p><strong id="paid-taxes">—</strong><small id="paid-tax-detail">—</small></article>
+          <article class="metric"><p>Taxes if sold today</p><strong id="terminal-taxes">—</strong><small id="terminal-tax-detail">—</small></article>
+        </div>
+        <section class="panel chart-panel" aria-labelledby="return-heading"><div class="section-title"><div><p class="eyebrow">After TOB and CGT</p><h3 id="return-heading">Cumulative backtest return</h3></div></div><p class="chart-key"><span class="chart-key-csh2">CSH2 backtest</span><span class="chart-key-estr">Euro overnight benchmark portfolio</span></p><div id="return-chart" class="chart" aria-label="Cumulative CSH2 backtest return compared with a euro overnight benchmark portfolio using the same cash flows"></div></section>
+        <section class="panel chart-panel" aria-labelledby="rate-heading"><div class="section-title"><div><p class="eyebrow">Underlying benchmark</p><h3 id="rate-heading">Annualized rates</h3></div></div><p class="chart-key"><span class="chart-key-csh2">CSH2, 90-day annualized</span><span class="chart-key-estr">Euro overnight benchmark</span></p><div id="rate-chart" class="chart" aria-label="Trailing annualized CSH2 return compared with the euro overnight benchmark"></div></section>
+        <section class="panel ledger"><h3>Transaction ledger</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Price used</th><th>Units</th><th>Cash remaining</th><th>TOB</th><th>CGT</th><th id="exonerated-cgt-heading" hidden>Exonerated CGT</th></tr></thead><tbody id="ledger"></tbody></table></div></section>
+      </section>
+      <aside class="notice"><strong>Educational estimate, not tax advice.</strong> This version uses FIFO lots and assumes 10% CGT on positive realised gains from 2026 onward. Purchases before 2026 use the higher of their original price and the 31 December 2025 CSH2 close as their tax basis. If selected, it applies a €10,000 annual exemption and the eligible carry-forward, based only on gains in this backtest; it does not account for gains from other investments, losses, fund-specific treatment, or other exceptions. CSH2 prices are daily closes for Euronext Paris and may differ from your broker’s execution price. <strong>Everything is processed locally on your device; your cash flows and files never leave this machine.</strong></aside>
+      <footer class="support"><a href="https://www.buymeacoffee.com/plpeeters" target="_blank" rel="noopener noreferrer"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" height="60" /></a></footer>
+    </main>
+    <template id="flow-template"><div class="flow-row"><label><span class="sr-only">Date</span><input class="flow-date" type="date" required /></label><label><span class="sr-only">Direction</span><select class="flow-type"><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label><label><span class="sr-only">Net amount in euro</span><input class="flow-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required /></label><button class="delete-button" type="button" aria-label="Remove cash flow">×</button></div></template>
+    <script src="./vendor/papaparse.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
