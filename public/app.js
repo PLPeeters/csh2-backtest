@@ -157,9 +157,11 @@ function clearAllData() {
 }
 function showResult(result, metadata) {
   const showCgt = !reyndersTax.checked;
+  const showReyndersTax = reyndersTax.checked;
   const showExoneratedCgt = capitalGainsExemption.checked && !reyndersTax.checked;
   document.querySelector('#results').hidden = false;
   document.querySelector('#cgt-heading').hidden = !showCgt;
+  document.querySelector('#reynders-tax-heading').hidden = !showReyndersTax;
   document.querySelector('#exonerated-cgt-heading').hidden = !showExoneratedCgt;
   document.querySelector('#valuation-date').textContent = result.valuation.date;
   document.querySelector('#price-source').textContent = `Data last updated ${formatDataUpdatedAt.format(new Date(metadata.cachedAt))}`;
@@ -186,7 +188,7 @@ function showResult(result, metadata) {
   } else {
     breakEvenEstimate.hidden = true;
   }
-  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td class="cgt"${showCgt ? '' : ' hidden'}>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td>${entry.reyndersTax ? formatEuro.format(entry.reyndersTax) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
+  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td class="cgt"${showCgt ? '' : ' hidden'}>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td class="reynders-tax"${showReyndersTax ? '' : ' hidden'}>${entry.reyndersTax ? formatEuro.format(entry.reyndersTax) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
 }
 function makeChart(containerId) {
   const container = document.querySelector(containerId);
