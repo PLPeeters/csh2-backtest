@@ -54,8 +54,8 @@ button:hover { border-color: #194e3c; background: #194e3c; }
 .setting-grid { display: grid; grid-template-columns: 1fr 1fr minmax(180px, .65fr); align-items: end; gap: 16px 24px; margin-top: 16px; }
 .tax-exemption { display: flex; align-items: center; gap: 9px; color: #39574b; font-size: .875rem; font-weight: 600; line-height: 1.4; }
 .tax-exemption input { width: 17px; min-height: 17px; accent-color: #24644d; }
-.accrued-interest { display: block; color: #39574b; font-size: .825rem; font-weight: 700; }
-.accrued-interest input { display: block; margin-top: 6px; }
+.accrued-interest, .broker-transaction-fee { display: block; color: #39574b; font-size: .825rem; font-weight: 700; }
+.accrued-interest input, .broker-transaction-fee input { display: block; margin-top: 6px; }
 .action-row { padding-top: 24px; border-top: 1px solid #e3e8e5; }
 .status { min-height: 1.4em; margin: 14px 0 0; color: #627269; font-size: .9rem; }
 .status.error { color: #a52f24; }

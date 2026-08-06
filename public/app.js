@@ -11,6 +11,7 @@ const status = document.querySelector('#status');
 const capitalGainsExemption = document.querySelector('#capital-gains-exemption');
 const buyWholeSharesOnly = document.querySelector('#buy-whole-shares-only');
 const unpaidAccruedInterest = document.querySelector('#unpaid-accrued-interest');
+const brokerTransactionFee = document.querySelector('#broker-transaction-fee');
 const csvFileInput = document.querySelector('#csv-file');
 const csvDropzone = document.querySelector('#csv-dropzone');
 const csvFileName = document.querySelector('#csv-file-name');
@@ -42,13 +43,14 @@ function getFlows() {
   return [...document.querySelectorAll('.flow-row')].map((row) => ({ date: row.querySelector('.flow-date').value, type: row.querySelector('.flow-type').value, amount: Number(row.querySelector('.flow-amount').value) }));
 }
 function saveFlows() { localStorage.setItem(storageKey, JSON.stringify(getFlows())); }
-function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: unpaidAccruedInterest.value })); }
+function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: unpaidAccruedInterest.value, brokerTransactionFee: brokerTransactionFee.value })); }
 function restoreSettings() {
   try {
     const settings = JSON.parse(localStorage.getItem(settingsStorageKey));
     capitalGainsExemption.checked = settings?.applyCapitalGainsExemption ?? true;
     buyWholeSharesOnly.checked = settings?.buyWholeSharesOnly ?? true;
     unpaidAccruedInterest.value = settings?.unpaidAccruedInterest ?? '';
+    brokerTransactionFee.value = settings?.brokerTransactionFee ?? 0;
   } catch { localStorage.removeItem(settingsStorageKey); }
 }
 function restoreFlows() {
@@ -138,6 +140,7 @@ function clearAllData() {
   capitalGainsExemption.checked = true;
   buyWholeSharesOnly.checked = true;
   unpaidAccruedInterest.value = '';
+  brokerTransactionFee.value = 0;
   resetCsvImport();
   activeCharts.forEach((chart) => chart.remove());
   activeCharts = [];
@@ -157,6 +160,8 @@ function showResult(result, metadata) {
   document.querySelector('#paid-tax-detail').textContent = `TOB ${formatEuro.format(result.paidTob)} · CGT ${formatEuro.format(result.paidCgt)}`;
   document.querySelector('#terminal-taxes').textContent = formatEuro.format(result.terminalTob + result.terminalCgt);
   document.querySelector('#terminal-tax-detail').textContent = `TOB ${formatEuro.format(result.terminalTob)} · CGT ${formatEuro.format(result.terminalCgt)}`;
+  document.querySelector('#broker-fees').textContent = formatEuro.format(result.paidBrokerFees + result.terminalBrokerFee);
+  document.querySelector('#broker-fee-detail').textContent = `Paid ${formatEuro.format(result.paidBrokerFees)} · if sold today ${formatEuro.format(result.terminalBrokerFee)}`;
   const missedHeading = document.querySelector('#missed-heading');
   const missedShare = document.querySelector('#missed-share');
   const breakEvenEstimate = document.querySelector('#break-even-estimate');
@@ -171,7 +176,7 @@ function showResult(result, metadata) {
   } else {
     breakEvenEstimate.hidden = true;
   }
-  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.tob)}</td><td>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
+  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
 }
 function makeChart(containerId) {
   const container = document.querySelector(containerId);
@@ -241,7 +246,7 @@ async function calculate() {
   const { data, rateData } = await loadMarketData();
   const valuationDate = latestAvailablePriceDate(data.prices, today());
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
-  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: Number(unpaidAccruedInterest.value || 0) };
+  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
   const result = runBacktest(flows, data.prices, valuationDate, options);
   result.breakEvenEstimate = estimateBreakEvenDate(flows, data.prices, valuationDate, options);
   showResult(result, data);
@@ -291,6 +296,7 @@ unpaidAccruedInterest.addEventListener('change', () => {
     calculate().catch((error) => setStatus(error.message, 'error'));
   }
 });
+brokerTransactionFee.addEventListener('change', saveSettings);
 restoreFlows();
 restoreSettings();
 updateEmptyFlowStatus();

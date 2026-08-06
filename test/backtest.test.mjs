@@ -13,6 +13,28 @@ test('deducts TOB on inflow and estimates terminal taxes', () => {
   assert.equal(result.netLiquidationValue, 1177.15);
 });
 
+test('deducts a fixed broker fee from executed purchases, sales, and terminal liquidation', () => {
+  const result = runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'outflow', amount: 500 }
+  ], prices, '2026-03-02', { brokerTransactionFee: 5 });
+  assert.equal(result.entries[0].brokerFee, 5);
+  assert.equal(result.entries[1].brokerFee, 5);
+  assert.equal(result.paidBrokerFees, 10);
+  assert.equal(result.terminalBrokerFee, 5);
+  assert.ok(result.netLiquidationValue < runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'outflow', amount: 500 }
+  ], prices, '2026-03-02').netLiquidationValue);
+});
+
+test('does not charge a broker fee when whole-share cash cannot fund a purchase', () => {
+  const result = runBacktest([{ date: '2026-01-02', type: 'inflow', amount: 100 }], { '2026-01-02': 100 }, '2026-01-02', { buyWholeSharesOnly: true, brokerTransactionFee: 5 });
+  assert.equal(result.entries[0].brokerFee, 0);
+  assert.equal(result.paidBrokerFees, 0);
+  assert.equal(result.availableCash, 100);
+});
+
 test('buys whole shares with available cash and carries the remainder to the next inflow', () => {
   const result = runBacktest([
     { date: '2026-01-02', type: 'inflow', amount: 150 },

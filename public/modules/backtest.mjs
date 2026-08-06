@@ -109,12 +109,14 @@ function unitsForNetOutflow(lot, maxUnits, price, targetNet, exemption, year) {
   return upper;
 }
 
-export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExemption = false, buyWholeSharesOnly = false, unpaidAccruedInterest = 0 } = {}) {
+export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExemption = false, buyWholeSharesOnly = false, unpaidAccruedInterest = 0, brokerTransactionFee = 0 } = {}) {
   if (!Number.isFinite(unpaidAccruedInterest) || unpaidAccruedInterest < 0) throw new Error('Unpaid accrued interest must be a non-negative amount.');
+  if (!Number.isFinite(brokerTransactionFee) || brokerTransactionFee < 0) throw new Error('Broker transaction fee must be a non-negative amount.');
   const lots = [];
   const entries = [];
   let paidTob = 0;
   let paidCgt = 0;
+  let paidBrokerFees = 0;
   let availableCash = 0;
   const exemption = createCapitalGainsExemption(applyCapitalGainsExemption);
   for (const flow of [...flows].sort((left, right) => left.date.localeCompare(right.date))) {
@@ -122,18 +124,24 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
     const quote = quoteForTransaction(prices, flow.date);
     if (flow.type === 'inflow') {
       if (buyWholeSharesOnly) availableCash += flow.amount;
-      const units = buyWholeSharesOnly ? Math.floor(availableCash / (quote.price * (1 + TOB_RATE))) : (flow.amount - flow.amount * TOB_RATE) / quote.price;
+      if (!buyWholeSharesOnly && flow.amount <= brokerTransactionFee) throw new Error(`Inflow of €${flow.amount.toFixed(2)} on ${flow.date} does not cover the broker transaction fee.`);
+      const wholeShareUnits = Math.floor((availableCash - brokerTransactionFee) / (quote.price * (1 + TOB_RATE)));
+      const units = buyWholeSharesOnly ? Math.max(0, wholeShareUnits) : ((flow.amount - brokerTransactionFee) * (1 - TOB_RATE)) / quote.price;
       const gross = units * quote.price;
-      const tob = buyWholeSharesOnly ? gross * TOB_RATE : flow.amount * TOB_RATE;
-      if (buyWholeSharesOnly) availableCash -= gross + tob;
-      lots.push({ units, purchasePrice: quote.price, purchaseDate: flow.date });
+      const brokerFee = units > 0 ? brokerTransactionFee : 0;
+      const tob = buyWholeSharesOnly ? gross * TOB_RATE : (flow.amount - brokerFee) * TOB_RATE;
+      if (buyWholeSharesOnly) availableCash -= gross + tob + brokerFee;
+      if (units > 0) lots.push({ units, purchasePrice: quote.price, purchaseDate: flow.date });
       paidTob += tob;
-      entries.push({ ...flow, priceDate: quote.date, price: quote.price, priceKind: quote.kind, units, tob, cgt: 0, exoneratedCgt: 0, net: 0, remainingCash: euro(availableCash) });
+      paidBrokerFees += brokerFee;
+      entries.push({ ...flow, priceDate: quote.date, price: quote.price, priceKind: quote.kind, units, tob, brokerFee, cgt: 0, exoneratedCgt: 0, net: 0, remainingCash: euro(availableCash) });
       continue;
     }
     const cashUsed = buyWholeSharesOnly ? Math.min(availableCash, flow.amount) : 0;
     availableCash -= cashUsed;
     let remainingNet = flow.amount - cashUsed;
+    const brokerFee = remainingNet > 0.00000001 ? brokerTransactionFee : 0;
+    remainingNet += brokerFee;
     let soldUnits = 0;
     let tob = 0;
     let cgt = 0;
@@ -157,16 +165,19 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
     if (buyWholeSharesOnly && remainingNet < 0) availableCash -= remainingNet;
     paidTob += tob;
     paidCgt += cgt;
-    entries.push({ ...flow, priceDate: quote.date, price: quote.price, priceKind: quote.kind, units: soldUnits, tob, cgt, exoneratedCgt, net: flow.amount, remainingCash: euro(availableCash) });
+    paidBrokerFees += brokerFee;
+    entries.push({ ...flow, priceDate: quote.date, price: quote.price, priceKind: quote.kind, units: soldUnits, tob, brokerFee, cgt, exoneratedCgt, net: flow.amount, remainingCash: euro(availableCash) });
   }
   const openLots = lots.filter((lot) => lot.units > 0.00000001);
   const valuation = closingQuoteOnOrBefore(prices, valuationDate);
   const terminal = liquidation(openLots, prices, valuation.price, exemption, Number(valuation.date.slice(0, 4)));
+  const terminalBrokerFee = openLots.length ? brokerTransactionFee : 0;
+  terminal.net -= terminalBrokerFee;
   const totalInput = flows.reduce((sum, flow) => sum + (flow.type === 'inflow' ? flow.amount : -flow.amount), 0) + unpaidAccruedInterest;
   const missedAmount = terminal.net + availableCash - totalInput;
   const missedSharePercent = totalInput ? (missedAmount / totalInput) * 100 : undefined;
   return {
-    entries: entries.map((entry) => ({ ...entry, units: Number(entry.units.toFixed(6)), tob: euro(entry.tob), cgt: euro(entry.cgt), exoneratedCgt: euro(entry.exoneratedCgt), net: euro(entry.net) })),
+    entries: entries.map((entry) => ({ ...entry, units: Number(entry.units.toFixed(6)), tob: euro(entry.tob), brokerFee: euro(entry.brokerFee), cgt: euro(entry.cgt), exoneratedCgt: euro(entry.exoneratedCgt), net: euro(entry.net) })),
     openLots,
     valuation,
     units: openLots.reduce((sum, lot) => sum + lot.units, 0),
@@ -174,8 +185,10 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
     grossValue: euro(openLots.reduce((sum, lot) => sum + lot.units, 0) * valuation.price),
     paidTob: euro(paidTob),
     paidCgt: euro(paidCgt),
+    paidBrokerFees: euro(paidBrokerFees),
     terminalTob: euro(terminal.tob),
     terminalCgt: euro(terminal.cgt),
+    terminalBrokerFee: euro(terminalBrokerFee),
     netLiquidationValue: euro(terminal.net + availableCash),
     totalInput: euro(totalInput),
     missedAmount: euro(missedAmount),
