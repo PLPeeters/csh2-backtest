@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -239,6 +239,39 @@ test('builds a net-return snapshot for each available price date after investing
   assert.equal(series.length, 3);
   assert.equal(series[0].date, '2026-01-02');
   assert.ok(series.at(-1).value > series[0].value);
+});
+
+test('uses pre-flow CSH2 price history to provide a trailing annualized return from the first flow date', () => {
+  const series = buildTrailingAnnualizedCsh2ReturnSeries({
+    '2025-10-01': 100,
+    '2026-01-01': 110
+  }, '2026-01-01', '2026-01-01');
+  assert.equal(series.length, 1);
+  assert.equal(series[0].date, '2026-01-01');
+  assert.ok(series[0].value > 0);
+});
+
+test('uses the same trailing annualization for the compounded overnight benchmark', () => {
+  const rates = {};
+  const start = new Date('2025-10-01T00:00:00Z');
+  for (let day = 0; day <= 90; day += 1) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + day);
+    rates[date.toISOString().slice(0, 10)] = 3;
+  }
+  const series = buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, '2025-12-30', '2025-12-30');
+  assert.equal(series.length, 1);
+  assert.equal(series[0].date, '2025-12-30');
+  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+});
+
+test('carries an overnight rate across calendar gaps before annualizing it', () => {
+  const series = buildTrailingAnnualizedOvernightBenchmarkReturnSeries({
+    '2025-10-01': 3,
+    '2025-12-30': 3
+  }, '2025-12-30', '2025-12-30');
+  assert.equal(series.length, 1);
+  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
 });
 
 test('excludes whole-share residual cash from the overnight benchmark portfolio', () => {

@@ -246,6 +246,40 @@ export function buildBacktestReturnSeries(flows, prices, options) {
   return snapshots;
 }
 
+function trailingAnnualizedReturnSeries(points, from, lookbackDays) {
+  return points.map((point, index) => {
+    if (point.date < from) return undefined;
+    const prior = [...points.slice(0, index)].reverse().find((candidate) => daysBetween(candidate.date, point.date) >= lookbackDays);
+    if (!prior) return undefined;
+    const days = daysBetween(prior.date, point.date);
+    return { date: point.date, value: ((point.value / prior.value) ** (365 / days) - 1) * 100 };
+  }).filter(Boolean);
+}
+
+export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90 } = {}) {
+  const points = Object.entries(prices)
+    .filter(([date, record]) => date <= to && !record?.isFallback && Number.isFinite(priceValue(record, 'close')))
+    .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+  return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+}
+
+export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 90 } = {}) {
+  let value = 1;
+  let previousDate;
+  let previousRate;
+  const points = Object.entries(rates)
+    .filter(([date, rate]) => date <= to && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, rate]) => {
+      if (previousDate) value *= (1 + previousRate / 100) ** (daysBetween(previousDate, date) / 365);
+      previousDate = date;
+      previousRate = rate;
+      return { date, value };
+    });
+  return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+}
+
 function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options) {
   const { entries } = runBacktest(flows, prices, valuationDate, options);
   let priorCash = 0;

@@ -1,4 +1,4 @@
-import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs';
+import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs';
 import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs';
 import { latestAvailablePriceDate } from './modules/static-market-data.mjs';
 import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js';
@@ -221,15 +221,6 @@ function loadMarketData() {
   }
   return marketDataPromise;
 }
-function annualizedCsh2Series(prices, from, to) {
-  const points = Object.entries(prices).filter(([date, record]) => date >= from && date <= to && !record?.isFallback && Number.isFinite(Number.isFinite(record) ? record : record?.close)).map(([time, record]) => ({ time, close: Number.isFinite(record) ? record : record.close })).sort((left, right) => left.time.localeCompare(right.time));
-  return points.map((point, index) => {
-    const prior = [...points.slice(0, index)].reverse().find((candidate) => (new Date(`${point.time}T00:00:00Z`) - new Date(`${candidate.time}T00:00:00Z`)) / 86400000 >= 90);
-    if (!prior) return null;
-    const days = (new Date(`${point.time}T00:00:00Z`) - new Date(`${prior.time}T00:00:00Z`)) / 86400000;
-    return { time: point.time, value: ((point.close / prior.close) ** (365 / days) - 1) * 100 };
-  }).filter(Boolean);
-}
 function renderCharts(flows, prices, rates, from, to, options) {
   activeCharts.forEach((chart) => chart.remove());
   activeCharts = [];
@@ -240,8 +231,8 @@ function renderCharts(flows, prices, rates, from, to, options) {
   addSeries(returnChart, overnightReturnSeries, '#c7943c');
   returnChart.timeScale().fitContent();
   const rateChart = makeChart('#rate-chart');
-  const csh2RateSeries = annualizedCsh2Series(prices, from, to);
-  const overnightRateSeries = Object.entries(rates).filter(([date, rate]) => date >= from && date <= to && Number.isFinite(rate)).sort(([left], [right]) => left.localeCompare(right)).map(([time, value]) => ({ time, value }));
+  const csh2RateSeries = buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to).map((point) => ({ time: point.date, value: point.value }));
+  const overnightRateSeries = buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to).map((point) => ({ time: point.date, value: point.value }));
   addSeries(rateChart, csh2RateSeries, '#1d6a54');
   addSeries(rateChart, overnightRateSeries, '#c7943c');
   rateChart.timeScale().fitContent();
