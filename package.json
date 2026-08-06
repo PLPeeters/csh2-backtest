@@ -6,6 +6,8 @@
   "scripts": {
     "prepare-site": "node scripts/prepare-static-site.mjs",
     "refresh-data": "node scripts/refresh-static-data.mjs",
+    "refresh-csh2": "node scripts/refresh-static-data.mjs --csh2",
+    "refresh-overnight-rates": "node scripts/refresh-static-data.mjs --overnight-rates",
     "start": "npm run prepare-site && node server.mjs",
     "test": "node --test"
   },
