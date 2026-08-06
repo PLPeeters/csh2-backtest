@@ -118,6 +118,34 @@ test('applies the annual capital-gains exemption and carry-forward when selected
   assert.ok(withExemption.netLiquidationValue > withoutExemption.netLiquidationValue);
 });
 
+test('applies Reynders Tax instead of CGT and ignores the capital-gains exemption', () => {
+  const result = runBacktest([{ date: '2026-01-02', type: 'inflow', amount: 1000 }], prices, '2026-03-02', {
+    applyCapitalGainsExemption: true,
+    applyReyndersTax: true
+  });
+  assert.equal(result.terminalCgt, 0);
+  assert.equal(result.terminalReyndersTax, 59.93);
+  assert.equal(result.netLiquidationValue, 1137.19);
+});
+
+test('applies Reynders Tax to pre-2026 purchases without using the CGT reference basis', () => {
+  const result = runBacktest([{ date: '2025-01-02', type: 'inflow', amount: 1000 }], {
+    '2025-01-02': 100,
+    '2026-01-02': 120
+  }, '2026-01-02', { applyReyndersTax: true });
+  assert.equal(result.terminalCgt, 0);
+  assert.equal(result.terminalReyndersTax, 59.93);
+});
+
+test('applies Reynders Tax to gains realised before 2026', () => {
+  const result = runBacktest([
+    { date: '2025-01-02', type: 'inflow', amount: 1000 },
+    { date: '2025-02-02', type: 'outflow', amount: 500 }
+  ], { '2025-01-02': 100, '2025-02-02': 120 }, '2025-02-02', { applyReyndersTax: true });
+  assert.equal(result.entries[1].cgt, 0);
+  assert.ok(result.entries[1].reyndersTax > 0);
+});
+
 test('caps accumulated capital-gains exemption carry-forward at €15,000', () => {
   const result = runBacktest([{ date: '2026-01-02', type: 'inflow', amount: 10000 }], {
     '2026-01-02': 100,

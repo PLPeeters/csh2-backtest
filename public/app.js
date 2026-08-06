@@ -9,6 +9,7 @@ const flowsElement = document.querySelector('#flows');
 const template = document.querySelector('#flow-template');
 const status = document.querySelector('#status');
 const capitalGainsExemption = document.querySelector('#capital-gains-exemption');
+const reyndersTax = document.querySelector('#reynders-tax');
 const buyWholeSharesOnly = document.querySelector('#buy-whole-shares-only');
 const unpaidAccruedInterest = document.querySelector('#unpaid-accrued-interest');
 const brokerTransactionFee = document.querySelector('#broker-transaction-fee');
@@ -43,11 +44,16 @@ function getFlows() {
   return [...document.querySelectorAll('.flow-row')].map((row) => ({ date: row.querySelector('.flow-date').value, type: row.querySelector('.flow-type').value, amount: Number(row.querySelector('.flow-amount').value) }));
 }
 function saveFlows() { localStorage.setItem(storageKey, JSON.stringify(getFlows())); }
-function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: unpaidAccruedInterest.value, brokerTransactionFee: brokerTransactionFee.value })); }
+function syncCapitalGainsExemption() {
+  capitalGainsExemption.disabled = reyndersTax.checked;
+}
+function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: unpaidAccruedInterest.value, brokerTransactionFee: brokerTransactionFee.value })); }
 function restoreSettings() {
   try {
     const settings = JSON.parse(localStorage.getItem(settingsStorageKey));
     capitalGainsExemption.checked = settings?.applyCapitalGainsExemption ?? true;
+    reyndersTax.checked = settings?.applyReyndersTax ?? false;
+    syncCapitalGainsExemption();
     buyWholeSharesOnly.checked = settings?.buyWholeSharesOnly ?? true;
     unpaidAccruedInterest.value = settings?.unpaidAccruedInterest ?? '';
     brokerTransactionFee.value = settings?.brokerTransactionFee ?? 0;
@@ -138,6 +144,8 @@ function clearAllData() {
   flowsElement.replaceChildren();
   addFlow();
   capitalGainsExemption.checked = true;
+  reyndersTax.checked = false;
+  syncCapitalGainsExemption();
   buyWholeSharesOnly.checked = true;
   unpaidAccruedInterest.value = '';
   brokerTransactionFee.value = 0;
@@ -148,18 +156,20 @@ function clearAllData() {
   setStatus('All locally saved cash flows and settings were cleared.', 'success');
 }
 function showResult(result, metadata) {
-  const showExoneratedCgt = capitalGainsExemption.checked;
+  const showCgt = !reyndersTax.checked;
+  const showExoneratedCgt = capitalGainsExemption.checked && !reyndersTax.checked;
   document.querySelector('#results').hidden = false;
+  document.querySelector('#cgt-heading').hidden = !showCgt;
   document.querySelector('#exonerated-cgt-heading').hidden = !showExoneratedCgt;
   document.querySelector('#valuation-date').textContent = result.valuation.date;
   document.querySelector('#price-source').textContent = `Data last updated ${formatDataUpdatedAt.format(new Date(metadata.cachedAt))}`;
   document.querySelector('#net-value').textContent = formatEuro.format(result.netLiquidationValue);
   document.querySelector('#gross-value').textContent = formatEuro.format(result.grossValue);
   document.querySelector('#units').textContent = `${formatNumber.format(result.units)} CSH2 units${result.availableCash ? ` · ${formatEuro.format(result.availableCash)} cash` : ''}`;
-  document.querySelector('#paid-taxes').textContent = formatEuro.format(result.paidTob + result.paidCgt);
-  document.querySelector('#paid-tax-detail').textContent = `TOB ${formatEuro.format(result.paidTob)} · CGT ${formatEuro.format(result.paidCgt)}`;
-  document.querySelector('#terminal-taxes').textContent = formatEuro.format(result.terminalTob + result.terminalCgt);
-  document.querySelector('#terminal-tax-detail').textContent = `TOB ${formatEuro.format(result.terminalTob)} · CGT ${formatEuro.format(result.terminalCgt)}`;
+  document.querySelector('#paid-taxes').textContent = formatEuro.format(result.paidTob + result.paidCgt + result.paidReyndersTax);
+  document.querySelector('#paid-tax-detail').textContent = `TOB ${formatEuro.format(result.paidTob)} · ${reyndersTax.checked ? `Reynders Tax ${formatEuro.format(result.paidReyndersTax)}` : `CGT ${formatEuro.format(result.paidCgt)}`}`;
+  document.querySelector('#terminal-taxes').textContent = formatEuro.format(result.terminalTob + result.terminalCgt + result.terminalReyndersTax);
+  document.querySelector('#terminal-tax-detail').textContent = `TOB ${formatEuro.format(result.terminalTob)} · ${reyndersTax.checked ? `Reynders Tax ${formatEuro.format(result.terminalReyndersTax)}` : `CGT ${formatEuro.format(result.terminalCgt)}`}`;
   document.querySelector('#broker-fees').textContent = formatEuro.format(result.paidBrokerFees + result.terminalBrokerFee);
   document.querySelector('#broker-fee-detail').textContent = `Paid ${formatEuro.format(result.paidBrokerFees)} · if sold today ${formatEuro.format(result.terminalBrokerFee)}`;
   const missedHeading = document.querySelector('#missed-heading');
@@ -176,7 +186,7 @@ function showResult(result, metadata) {
   } else {
     breakEvenEstimate.hidden = true;
   }
-  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
+  document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td class="cgt"${showCgt ? '' : ' hidden'}>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td>${entry.reyndersTax ? formatEuro.format(entry.reyndersTax) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
 }
 function makeChart(containerId) {
   const container = document.querySelector(containerId);
@@ -246,7 +256,7 @@ async function calculate() {
   const { data, rateData } = await loadMarketData();
   const valuationDate = latestAvailablePriceDate(data.prices, today());
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
-  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
+  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
   const result = runBacktest(flows, data.prices, valuationDate, options);
   result.breakEvenEstimate = estimateBreakEvenDate(flows, data.prices, valuationDate, options);
   showResult(result, data);
@@ -279,6 +289,13 @@ document.querySelector('#calculate-button').addEventListener('click', async () =
   try { await calculate(); } catch (error) { setStatus(error.message, 'error'); document.querySelector('#results').hidden = true; }
 });
 capitalGainsExemption.addEventListener('change', () => {
+  saveSettings();
+  if (!document.querySelector('#results').hidden) {
+    calculate().catch((error) => setStatus(error.message, 'error'));
+  }
+});
+reyndersTax.addEventListener('change', () => {
+  syncCapitalGainsExemption();
   saveSettings();
   if (!document.querySelector('#results').hidden) {
     calculate().catch((error) => setStatus(error.message, 'error'));
