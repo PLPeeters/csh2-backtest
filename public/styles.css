@@ -111,6 +111,10 @@ th { color: #60756d; font-size: .68rem; letter-spacing: .08em; text-transform: u
 .notice { margin-top: 24px; border-left: 3px solid #b48432; background: #fffdf6; padding: 16px 18px; color: #555e55; font-size: .9rem; line-height: 1.55; }
 .support { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin-top: 28px; }
 .support img { display: block; width: 217px; height: 60px; }
+.license-notice { max-width: 520px; margin: 6px 0 0; color: #617169; font-size: .75rem; line-height: 1.45; text-align: center; }
+.license-notice a { color: #285747; }
+.license-icons { display: flex; align-items: center; gap: 3px; margin-top: -4px; }
+.license-icons img { display: block; width: auto; height: 22px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 
 @media (max-width: 760px) {
