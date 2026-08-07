@@ -179,9 +179,9 @@ function showResult(result, metadata) {
   const breakEvenEstimate = document.querySelector('#break-even-estimate');
   const isBelowBreakEven = result.missedAmount < 0;
   document.querySelector('.missed-result').classList.toggle('negative', isBelowBreakEven);
-  missedHeading.textContent = isBelowBreakEven ? 'CSH2 would currently be below your net input' : 'You missed out on';
+  missedHeading.textContent = isBelowBreakEven ? 'CSH2 would currently be below your net input by' : 'You missed out on';
   document.querySelector('#missed-amount').textContent = formatEuro.format(Math.abs(result.missedAmount));
-  missedShare.textContent = result.missedSharePercent === undefined ? 'Your net cash input is zero.' : isBelowBreakEven ? `a shortfall equal to ${Math.abs(result.missedSharePercent).toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your net cash input.` : `which is ${result.missedSharePercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your net cash input.`;
+  missedShare.textContent = result.missedSharePercent === undefined ? 'Your net cash input is zero.' : isBelowBreakEven ? `a shortfall equal to ${Math.abs(result.missedSharePercent).toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest` : `which is ${result.missedSharePercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest`;
   if (isBelowBreakEven && result.breakEvenEstimate) {
     breakEvenEstimate.hidden = false;
     breakEvenEstimate.textContent = `Estimated break-even in ${result.breakEvenEstimate.days} day${result.breakEvenEstimate.days === 1 ? '' : 's'}. Assumes the CSH2 price keeps its ${result.breakEvenEstimate.trendDays}-day trend (${result.breakEvenEstimate.trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%).`;

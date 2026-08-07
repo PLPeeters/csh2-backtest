@@ -10,8 +10,11 @@
     <main class="app-shell">
       <header class="app-header">
         <h1>CSH2 backtester</h1>
-        <p class="lede">Model dated deposits and withdrawals against CSH2, including transaction costs and realised capital-gains tax.</p>
-        <p class="header-assumption">By default, the backtest uses FIFO lots and assumes 10% CGT on positive realised gains from 2026 onward. For purchases before 2026, the tax basis is the higher of the original price and the 31 December 2025 CSH2 close.</p>
+        <p class="lede">Model dated deposits and withdrawals against CSH2, including transaction costs and taxes.</p>
+        <p class="header-assumption">
+          By default, the backtest uses FIFO lots and assumes 10% CGT on positive realised gains from 2026 onward.<br>
+          For purchases before 2026, the tax basis is the higher of the original price and the 31 December 2025 CSH2 close.
+        </p>
         <p class="privacy-note">Everything is processed locally on your device; your cash flows and files never leave this machine.</p>
       </header>
       <section class="panel input-panel" aria-labelledby="flows-heading">
@@ -41,7 +44,7 @@
         <section class="input-section assumptions" aria-labelledby="assumptions-heading">
           <div><p class="eyebrow">Assumptions</p><h3 id="assumptions-heading">Calculation settings</h3></div>
           <div class="setting-grid">
-            <div class="setting-field"><label class="broker-transaction-fee">Broker transaction fee per trade (€)<input id="broker-transaction-fee" type="number" min="0" step="0.01" value="0" inputmode="decimal" /></label><p class="setting-description">A fixed EUR amount for each executed CSH2 purchase, sale, and estimated final sale.</p></div>
+            <div class="setting-field"><label class="broker-transaction-fee">Broker transaction fee per trade (€)<input id="broker-transaction-fee" type="number" min="0" step="0.01" value="0" inputmode="decimal" /></label></div>
             <div class="setting-card"><label class="tax-exemption"><input id="buy-whole-shares-only" type="checkbox" checked />Buy whole shares only</label><p class="setting-description">Limit purchases to whole CSH2 shares.<br>When buying, unspent cash carries forward and is used for subsequent buys. When selling, unspent cash is consumed before selling shares.</p></div>
             <div class="setting-card"><label class="tax-exemption"><input id="capital-gains-exemption" type="checkbox" checked />Apply the annual capital-gains exemption</label><p class="setting-description">Applies a €10.000 annual exemption and eligible carry-forward up-to €15.000, based only on gains in this backtest.</p></div>
             <div class="setting-card"><label class="tax-exemption"><input id="reynders-tax" type="checkbox" />Apply Reynders Tax instead of CGT</label><p class="setting-description">Applies 30% to all positive gains instead of CGT.</p></div>
