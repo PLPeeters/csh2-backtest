@@ -46,6 +46,7 @@ input, select { width: 100%; border: 1px solid #c7d2cb; padding: 0 10px; color: 
 input:hover, select:hover { border-color: #94a79d; }
 button { border: 1px solid #1e6049; padding: 0 15px; background: #24644d; color: #fff; cursor: pointer; font-size: .9rem; font-weight: 700; }
 button:hover { border-color: #194e3c; background: #194e3c; }
+button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5ebe7; color: #73827a; cursor: not-allowed; }
 .quiet { border-color: #cbd7d0; background: #fff; color: #285747; }
 .quiet:hover { border-color: #a7b8ae; background: #f1f5f2; }
 .delete-button { border-color: #ead4d0; padding: 0; background: #fff7f6; color: #913a31; font-size: 1.3rem; }

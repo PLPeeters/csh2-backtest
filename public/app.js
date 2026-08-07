@@ -16,6 +16,7 @@ const brokerTransactionFee = document.querySelector('#broker-transaction-fee');
 const csvFileInput = document.querySelector('#csv-file');
 const csvDropzone = document.querySelector('#csv-dropzone');
 const csvFileName = document.querySelector('#csv-file-name');
+const calculateButton = document.querySelector('#calculate-button');
 const formatEuro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 const formatNumber = new Intl.NumberFormat('nl-BE', { maximumFractionDigits: 6 });
 const formatDataUpdatedAt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'medium' });
@@ -25,6 +26,11 @@ let marketDataPromise;
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function setStatus(message, type = '', isEmptyState = false) { status.textContent = message; status.className = `status ${type}`; status.dataset.emptyState = String(isEmptyState); }
+function hasValidFlows() {
+  const flows = getFlows();
+  return flows.length > 0 && flows.every((flow) => flow.date && Number.isFinite(flow.amount) && flow.amount > 0);
+}
+function updateCalculateButtonState() { calculateButton.disabled = !hasValidFlows(); }
 function updateEmptyFlowStatus() {
   const hasInflow = getFlows().some((flow) => flow.type === 'inflow' && flow.date && flow.amount > 0);
   if (hasInflow && status.dataset.emptyState === 'true') setStatus('');
@@ -36,9 +42,12 @@ function addFlow(flow = { date: today(), type: 'inflow', amount: '' }) {
   row.querySelector('.flow-date').value = flow.date;
   row.querySelector('.flow-type').value = flow.type;
   row.querySelector('.flow-amount').value = flow.amount;
-  row.querySelector('.delete-button').addEventListener('click', () => { row.remove(); saveFlows(); updateEmptyFlowStatus(); });
-  row.querySelectorAll('input, select').forEach((control) => control.addEventListener('change', () => { saveFlows(); updateEmptyFlowStatus(); }));
+  row.querySelector('.delete-button').addEventListener('click', () => { row.remove(); saveFlows(); updateEmptyFlowStatus(); updateCalculateButtonState(); });
+  const updateFlow = () => { saveFlows(); updateEmptyFlowStatus(); updateCalculateButtonState(); };
+  row.querySelectorAll('input, select').forEach((control) => control.addEventListener('input', updateFlow));
+  row.querySelectorAll('select').forEach((control) => control.addEventListener('change', updateFlow));
   flowsElement.append(fragment);
+  updateCalculateButtonState();
 }
 function getFlows() {
   return [...document.querySelectorAll('.flow-row')].map((row) => ({ date: row.querySelector('.flow-date').value, type: row.querySelector('.flow-type').value, amount: Number(row.querySelector('.flow-amount').value) }));
@@ -278,7 +287,7 @@ document.querySelector('#example-button').addEventListener('click', () => {
   saveFlows();
   setStatus('Example loaded. Refresh prices & calculate when ready.');
 });
-document.querySelector('#calculate-button').addEventListener('click', async () => {
+calculateButton.addEventListener('click', async () => {
   try { await calculate(); } catch (error) { setStatus(error.message, 'error'); document.querySelector('#results').hidden = true; }
 });
 capitalGainsExemption.addEventListener('change', () => {
@@ -310,4 +319,5 @@ brokerTransactionFee.addEventListener('change', saveSettings);
 restoreFlows();
 restoreSettings();
 updateEmptyFlowStatus();
+updateCalculateButtonState();
 loadMarketData().catch(() => {});
