@@ -1,4 +1,4 @@
-import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=d0f7ae5c0cfe';
+import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=1be6451c075f';
 import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs?v=f7148e7603b4';
 import { latestAvailablePriceDate } from './modules/static-market-data.mjs?v=ce1614993ff4';
 import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js?v=66ac22df1b08';
@@ -13,6 +13,11 @@ const capitalGainsExemption = document.querySelector('#capital-gains-exemption')
 const reyndersTax = document.querySelector('#reynders-tax');
 const buyWholeSharesOnly = document.querySelector('#buy-whole-shares-only');
 const unpaidAccruedInterest = document.querySelector('#unpaid-accrued-interest');
+const interestPayoutDate = document.querySelector('#interest-payout-date');
+const interestPayoutAmount = document.querySelector('#interest-payout-amount');
+const interestModeInputs = [...document.querySelectorAll('input[name="interest-mode"]')];
+const unpaidInterestFields = document.querySelector('#unpaid-interest-fields');
+const payoutInterestFields = document.querySelector('#payout-interest-fields');
 const brokerTransactionFee = document.querySelector('#broker-transaction-fee');
 const csvFileInput = document.querySelector('#csv-file');
 const csvDropzone = document.querySelector('#csv-dropzone');
@@ -20,6 +25,7 @@ const csvFileName = document.querySelector('#csv-file-name');
 const calculateButton = document.querySelector('#calculate-button');
 const formatEuro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 const formatNumber = new Intl.NumberFormat('nl-BE', { maximumFractionDigits: 6 });
+const formatDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' });
 const formatDataUpdatedAt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'medium' });
 let activeCharts = [];
 let importedCsvRows = [];
@@ -36,6 +42,12 @@ function setStatus(message, type = '', isEmptyState = false) { status.textConten
 function hasValidFlows() {
   const flows = getFlows();
   return flows.length > 0 && flows.every((flow) => flow.date && Number.isFinite(flow.amount) && flow.amount > 0);
+}
+function selectedInterestMode() { return interestModeInputs.find((input) => input.checked).value; }
+function syncInterestMode() {
+  const isPayout = selectedInterestMode() === 'payout';
+  unpaidInterestFields.hidden = isPayout;
+  payoutInterestFields.hidden = !isPayout;
 }
 function updateCalculateButtonState() { calculateButton.disabled = !hasValidFlows(); }
 function updateEmptyFlowStatus() {
@@ -63,7 +75,7 @@ function saveFlows() { localStorage.setItem(storageKey, JSON.stringify(getFlows(
 function syncCapitalGainsExemption() {
   capitalGainsExemption.disabled = reyndersTax.checked;
 }
-function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: unpaidAccruedInterest.value, brokerTransactionFee: brokerTransactionFee.value })); }
+function saveSettings() { localStorage.setItem(settingsStorageKey, JSON.stringify({ applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, interestMode: selectedInterestMode(), unpaidAccruedInterest: unpaidAccruedInterest.value, interestPayoutDate: interestPayoutDate.value, interestPayoutAmount: interestPayoutAmount.value, brokerTransactionFee: brokerTransactionFee.value })); }
 function restoreSettings() {
   try {
     const settings = JSON.parse(localStorage.getItem(settingsStorageKey));
@@ -72,6 +84,11 @@ function restoreSettings() {
     syncCapitalGainsExemption();
     buyWholeSharesOnly.checked = settings?.buyWholeSharesOnly ?? true;
     unpaidAccruedInterest.value = settings?.unpaidAccruedInterest ?? '';
+    interestPayoutDate.value = settings?.interestPayoutDate ?? '';
+    interestPayoutAmount.value = settings?.interestPayoutAmount ?? '';
+    const interestMode = settings?.interestMode ?? (interestPayoutDate.value || interestPayoutAmount.value ? 'payout' : 'accrued');
+    interestModeInputs.find((input) => input.value === interestMode).checked = true;
+    syncInterestMode();
     brokerTransactionFee.value = settings?.brokerTransactionFee ?? 0;
   } catch { localStorage.removeItem(settingsStorageKey); }
 }
@@ -164,6 +181,10 @@ function clearAllData() {
   syncCapitalGainsExemption();
   buyWholeSharesOnly.checked = true;
   unpaidAccruedInterest.value = '';
+  interestPayoutDate.value = '';
+  interestPayoutAmount.value = '';
+  interestModeInputs.find((input) => input.value === 'accrued').checked = true;
+  syncInterestMode();
   brokerTransactionFee.value = 0;
   resetCsvImport();
   activeCharts.forEach((chart) => chart.remove());
@@ -206,6 +227,15 @@ function showResult(result, metadata) {
     breakEvenEstimate.textContent = 'Break-even can’t be estimated from the recent price trend.';
   } else {
     breakEvenEstimate.hidden = true;
+  }
+  const interestPayoutAssessment = document.querySelector('#interest-payout-assessment');
+  if (result.interestPayoutAssessment) {
+    interestPayoutAssessment.hidden = false;
+    const { preferred, difference, immediateValue, payoutDate, trendDays, trendReturnPercent, waitingValue } = result.interestPayoutAssessment;
+    document.querySelector('#interest-payout-decision').textContent = preferred === 'either' ? 'The projected values are effectively the same.' : `${preferred === 'move now' ? 'Moving now' : `Waiting until ${formatDate.format(new Date(`${payoutDate}T00:00:00Z`))}`} is projected to be ${formatEuro.format(Math.abs(difference))} better.`;
+    document.querySelector('#interest-payout-detail').textContent = `Projected net value on ${formatDate.format(new Date(`${payoutDate}T00:00:00Z`))}: move now ${formatEuro.format(immediateValue)} · wait ${formatEuro.format(waitingValue)}. Assumes CSH2 keeps its ${trendDays}-day trend (${trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%).`;
+  } else {
+    interestPayoutAssessment.hidden = true;
   }
   document.querySelector('#ledger').innerHTML = result.entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.type === 'inflow' ? 'Inflow / buy' : 'Outflow / sell'}</td><td>${formatEuro.format(entry.amount)}</td><td>${formatEuro.format(entry.price)}${entry.priceKind === 'close' ? '' : ` (${entry.priceKind})`}</td><td>${formatNumber.format(entry.units)}</td><td>${formatEuro.format(entry.remainingCash)}</td><td>${formatEuro.format(entry.brokerFee)}</td><td>${formatEuro.format(entry.tob)}</td><td class="cgt"${showCgt ? '' : ' hidden'}>${entry.cgt ? formatEuro.format(entry.cgt) : '—'}</td><td class="reynders-tax"${showReyndersTax ? '' : ' hidden'}>${entry.reyndersTax ? formatEuro.format(entry.reyndersTax) : '—'}</td><td class="exonerated-cgt"${showExoneratedCgt ? '' : ' hidden'}>${entry.exoneratedCgt ? formatEuro.format(entry.exoneratedCgt) : '—'}</td></tr>`).join('');
 }
@@ -268,8 +298,10 @@ async function calculate() {
   const { data, rateData } = await loadMarketData();
   const valuationDate = latestAvailablePriceDate(data.prices, today());
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
-  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
+  const isPayout = selectedInterestMode() === 'payout';
+  const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: isPayout ? 0 : Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
   const result = runBacktest(flows, data.prices, valuationDate, options);
+  result.interestPayoutAssessment = isPayout ? assessInterestPayoutTiming(flows, data.prices, valuationDate, options, interestPayoutDate.value, Number(interestPayoutAmount.value || 0)) : undefined;
   result.breakEvenEstimate = estimateBreakEvenDate(flows, data.prices, valuationDate, options);
   showResult(result, data);
   renderCharts(flows, data.prices, rateData.rates, from, valuationDate, options);
@@ -319,15 +351,30 @@ buyWholeSharesOnly.addEventListener('change', () => {
     calculate().catch((error) => setStatus(error.message, 'error'));
   }
 });
-unpaidAccruedInterest.addEventListener('change', () => {
+function refreshInterestResult() {
   saveSettings();
+  updateCalculateButtonState();
   if (!document.querySelector('#results').hidden) {
     calculate().catch((error) => setStatus(error.message, 'error'));
   }
+}
+unpaidAccruedInterest.addEventListener('change', () => {
+  refreshInterestResult();
+});
+interestModeInputs.forEach((input) => input.addEventListener('change', () => {
+  syncInterestMode();
+  refreshInterestResult();
+}));
+interestPayoutDate.addEventListener('change', () => {
+  refreshInterestResult();
+});
+interestPayoutAmount.addEventListener('change', () => {
+  refreshInterestResult();
 });
 brokerTransactionFee.addEventListener('change', saveSettings);
 restoreFlows();
 restoreSettings();
+syncInterestMode();
 updateEmptyFlowStatus();
 updateCalculateButtonState();
 loadMarketData().catch(() => {});

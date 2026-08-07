@@ -10,7 +10,7 @@
     <meta property="og:title" content="CSH2 Belgium Backtester" />
     <meta property="og:description" content="Model dated EUR cash flows invested in CSH2, including transaction costs and Belgian tax assumptions." />
     <link rel="icon" href="./favicon.svg?v=c72a35e60ef0" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=0a8646f262f9" />
+    <link rel="stylesheet" href="./styles.css?v=8b81164b9ed8" />
   </head>
   <body>
     <main class="app-shell">
@@ -39,12 +39,19 @@
           </div>
         </section>
         <section class="input-section cash-flow-section" aria-label="Cash-flow entries">
+          <div class="controls clear-data-controls"><button id="clear-data-button" class="quiet" type="button">Clear all data</button></div>
           <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span></span></div>
           <div id="flows" aria-live="polite"></div>
           <div class="controls flow-controls"><button id="add-button" class="quiet" type="button">Add cash flow</button></div>
           <div class="cash-flow-actions">
-            <label class="accrued-interest">Unpaid accrued interest (€)<input id="unpaid-accrued-interest" type="number" min="0" step="0.01" placeholder="0.00" inputmode="decimal" /></label>
-            <button id="clear-data-button" class="quiet" type="button">Clear all data</button>
+            <div class="interest-controls">
+              <div class="interest-mode" role="radiogroup" aria-label="Interest input type">
+                <label><input type="radio" name="interest-mode" value="accrued" checked />Unpaid accrued interest</label>
+                <label><input type="radio" name="interest-mode" value="payout" />Future interest payout</label>
+              </div>
+              <div id="unpaid-interest-fields"><label class="accrued-interest">Unpaid accrued interest (€)<input id="unpaid-accrued-interest" type="number" min="0" step="0.01" placeholder="0.00" inputmode="decimal" /></label></div>
+              <div id="payout-interest-fields" class="payout-interest-fields" hidden><label class="accrued-interest">Interest payout date<input id="interest-payout-date" type="date" /></label><label class="accrued-interest">Interest payout amount (€)<input id="interest-payout-amount" type="number" min="0.01" step="0.01" placeholder="0.00" inputmode="decimal" /></label></div>
+            </div>
           </div>
         </section>
         <section class="input-section assumptions" aria-labelledby="assumptions-heading">
@@ -72,6 +79,7 @@
             <article class="metric"><p>Taxes if sold today</p><strong id="terminal-taxes">—</strong><small id="terminal-tax-detail">—</small></article>
             <article class="metric"><p>Broker fees</p><strong id="broker-fees">—</strong><small id="broker-fee-detail">—</small></article>
           </div>
+          <article id="interest-payout-assessment" class="metric" hidden><p>Interest payout timing</p><strong id="interest-payout-decision">—</strong><small id="interest-payout-detail">—</small></article>
         </div>
         <section class="panel chart-panel" aria-labelledby="return-heading"><div class="section-title"><div><p class="eyebrow">After transaction costs and applicable tax</p><h3 id="return-heading">Cumulative backtest return</h3></div></div><p class="chart-key"><span class="chart-key-csh2">CSH2 backtest</span><span class="chart-key-estr">Euro overnight benchmark portfolio</span></p><div id="return-chart" class="chart" aria-label="Cumulative CSH2 backtest return compared with a euro overnight benchmark portfolio using the same cash flows"></div></section>
         <section class="panel chart-panel" aria-labelledby="rate-heading"><div class="section-title"><div><p class="eyebrow">Underlying benchmark</p><h3 id="rate-heading">Trailing 90-day annualized returns</h3></div></div><p class="chart-key"><span class="chart-key-csh2">CSH2</span><span class="chart-key-estr">Euro overnight benchmark</span></p><div id="rate-chart" class="chart" aria-label="Trailing 90-day annualized CSH2 return compared with the Euro overnight benchmark"></div></section>
@@ -88,6 +96,6 @@
     <template id="flow-template"><div class="flow-row"><label><span class="sr-only">Date</span><input class="flow-date" type="date" required /></label><label><span class="sr-only">Direction</span><select class="flow-type"><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label><label><span class="sr-only">Net amount in euro</span><input class="flow-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required /></label><button class="delete-button" type="button" aria-label="Remove cash flow">×</button></div></template>
     <script src="./vendor/papaparse.js?v=ac889c7a0c70"></script>
     <script async defer src="https://buttons.github.io/buttons.js"></script>
-    <script type="module" src="./app.js?v=dce1eb7139e6"></script>
+    <script type="module" src="./app.js?v=5148e6acc188"></script>
   </body>
 </html>

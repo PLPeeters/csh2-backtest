@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -77,6 +77,17 @@ test('reports missed earnings against net inputs and unpaid accrued interest', (
   assert.equal(result.totalInput, 950);
   assert.equal(result.missedAmount, 118.89);
   assert.equal(result.missedSharePercent.toFixed(6), '12.514722');
+});
+
+test('compares moving now with waiting for a future interest payout using the recent CSH2 trend', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  const assessment = assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 50);
+  assert.equal(assessment.preferred, 'move now');
+  assert.ok(assessment.immediateValue > assessment.waitingValue);
+  assert.equal(assessment.trendDays, 59);
+  assert.equal(assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '', 0), undefined);
+  assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 0), /positive amount/);
+  assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-03-02', 50), /must be after/);
 });
 
 test('calculates missed earnings percentage from net cash input in whole-share mode', () => {
