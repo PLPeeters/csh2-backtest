@@ -35,6 +35,10 @@ The repository uses three workflows. `.github/workflows/refresh-overnight-rates.
 
 Run `npm run refresh-data` locally to update both datasets, `npm run refresh-csh2` to update only CSH2, or `npm run refresh-overnight-rates` to update only the overnight benchmark. Run `npm run prepare-site` to copy browser dependencies and calculation modules into `public/`. The static JSON means the site stays available if Yahoo Finance or the ECB are temporarily unavailable, but each dataset can be no newer than its last successful refresh.
 
+## Cloudflare caching
+
+`npm run prepare-site` gives every first-party static asset a content-derived SHA-256 version in its URL. A data refresh therefore changes the application and data URLs, while unchanged styles, modules, and vendor files retain their existing cache entries. Configure Cloudflare to include query strings in cache keys (the default **Standard** caching level) and avoid long-lived caching for the HTML document; a rule that ignores query strings prevents this cache-busting mechanism from working.
+
 ## Importing cash flows
 
 Choose or drop a CSV file above the cash-flow list. The tool preselects its date and signed-amount columns from headers and sampled data; when there is only one numeric column, it selects that as the amount. It also detects the date format, while leaving every choice editable. It accepts `YYYY-M-D`, `D/M/YYYY`, `D/M/YY`, `M/D/YYYY`, and `M/D/YY`, with `/`, `-`, or `.` separators and optional zero padding. Positive amounts are inflows and negative amounts are outflows; zero amounts and malformed rows are skipped. Everything is processed locally on your device: files are parsed in the browser only, and neither they nor your cash flows leave your machine. A successful import replaces the untouched initial blank row and then resets the file and mapping fields. Use **Clear all data** and confirm the prompt to remove locally saved cash flows and settings, pending CSV data, and results; it restores a blank cash-flow row with both option toggles enabled.

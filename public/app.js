@@ -1,8 +1,8 @@
-import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs';
-import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs';
-import { latestAvailablePriceDate } from './modules/static-market-data.mjs';
-import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js';
-import { DateTime, Interval } from './vendor/luxon.mjs';
+import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=d0f7ae5c0cfe';
+import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs?v=7faf8b32c294';
+import { latestAvailablePriceDate } from './modules/static-market-data.mjs?v=ce1614993ff4';
+import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js?v=66ac22df1b08';
+import { DateTime, Interval } from './vendor/luxon.mjs?v=b495ad5cabea';
 
 const storageKey = 'csh2-belgium-flows-v1';
 const settingsStorageKey = 'csh2-belgium-settings-v1';
@@ -24,6 +24,7 @@ const formatDataUpdatedAt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'mediu
 let activeCharts = [];
 let importedCsvRows = [];
 let marketDataPromise;
+const marketDataVersion = new URL(import.meta.url).searchParams.get('v') ?? '';
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function formatBreakEvenDuration(from, to) {
@@ -229,7 +230,7 @@ function addSeries(chart, data, color) {
 }
 function loadMarketData() {
   if (!marketDataPromise) {
-    marketDataPromise = Promise.all([fetch('./data/csh2-prices.json'), fetch('./data/overnight-rates.json')]).then(async ([priceResponse, rateResponse]) => {
+    marketDataPromise = Promise.all([fetch(`./data/csh2-prices.json?v=${marketDataVersion}`), fetch(`./data/overnight-rates.json?v=${marketDataVersion}`)]).then(async ([priceResponse, rateResponse]) => {
       const data = await priceResponse.json();
       if (!priceResponse.ok) throw new Error(data.error ?? 'The published CSH2 price data could not be loaded.');
       const rateData = rateResponse.ok ? await rateResponse.json() : { rates: {} };
