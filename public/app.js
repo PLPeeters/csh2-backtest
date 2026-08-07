@@ -214,6 +214,9 @@ function showResult(result, metadata) {
   const missedHeading = document.querySelector('#missed-heading');
   const missedShare = document.querySelector('#missed-share');
   const breakEvenEstimate = document.querySelector('#break-even-estimate');
+  const breakEvenEstimateLabel = document.querySelector('#break-even-estimate-label');
+  const breakEvenDuration = document.querySelector('#break-even-duration');
+  const breakEvenAssumption = document.querySelector('#break-even-assumption');
   const isBelowBreakEven = result.missedAmount < 0;
   document.querySelector('.missed-result').classList.toggle('negative', isBelowBreakEven);
   missedHeading.textContent = isBelowBreakEven ? 'CSH2 would currently be below your net input by' : 'You missed out on';
@@ -221,12 +224,20 @@ function showResult(result, metadata) {
   missedShare.textContent = result.missedSharePercent === undefined ? 'Your net cash input is zero.' : isBelowBreakEven ? `a shortfall equal to ${Math.abs(result.missedSharePercent).toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest` : `which is ${result.missedSharePercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest`;
   if (isBelowBreakEven && result.breakEvenEstimate) {
     breakEvenEstimate.hidden = false;
-    breakEvenEstimate.textContent = `Estimated break-even in ${formatBreakEvenDuration(result.valuation.date, result.breakEvenEstimate.date)}. Assumes the CSH2 price keeps its ${result.breakEvenEstimate.trendDays}-day trend (${result.breakEvenEstimate.trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%).`;
+    breakEvenEstimateLabel.textContent = 'Estimated break-even in ';
+    breakEvenDuration.hidden = false;
+    breakEvenDuration.textContent = formatBreakEvenDuration(result.valuation.date, result.breakEvenEstimate.date);
+    breakEvenAssumption.hidden = false;
+    breakEvenAssumption.textContent = `(assuming the CSH2 price keeps its ${result.breakEvenEstimate.trendDays}-day trend of ${result.breakEvenEstimate.trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%)`;
   } else if (isBelowBreakEven) {
     breakEvenEstimate.hidden = false;
-    breakEvenEstimate.textContent = 'Break-even can’t be estimated from the recent price trend.';
+    breakEvenEstimateLabel.textContent = 'Break-even can’t be estimated from the recent price trend.';
+    breakEvenDuration.hidden = true;
+    breakEvenAssumption.hidden = true;
   } else {
     breakEvenEstimate.hidden = true;
+    breakEvenDuration.hidden = true;
+    breakEvenAssumption.hidden = true;
   }
   const interestPayoutAssessment = document.querySelector('#interest-payout-assessment');
   if (result.interestPayoutAssessment) {

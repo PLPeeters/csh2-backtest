@@ -10,7 +10,7 @@
     <meta property="og:title" content="CSH2 Belgium Backtester" />
     <meta property="og:description" content="Model dated EUR cash flows invested in CSH2, including transaction costs and Belgian tax assumptions." />
     <link rel="icon" href="./favicon.svg?v=c72a35e60ef0" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=f460e947a6da" />
+    <link rel="stylesheet" href="./styles.css?v=434e10a10ae8" />
   </head>
   <body>
     <main class="app-shell">
@@ -70,7 +70,7 @@
       <section id="results" hidden aria-live="polite">
         <div class="result-heading"><div><p class="eyebrow">As of <span id="valuation-date"></span></p><h2>Backtest result</h2></div><p id="price-source" class="source"></p></div>
         <div class="metrics">
-          <article class="metric main missed-result"><p id="missed-heading">You missed out on</p><strong id="missed-amount">—</strong><small id="missed-share">—</small><small id="break-even-estimate" hidden></small></article>
+          <article class="metric main missed-result"><p id="missed-heading">You missed out on</p><strong id="missed-amount">—</strong><small id="missed-share">—</small><small id="break-even-estimate" hidden><span id="break-even-estimate-label"></span><b id="break-even-duration" hidden></b></small><small id="break-even-assumption" hidden></small></article>
           <div class="metric-row metric-row-values">
             <article class="metric"><p>Net value if sold today</p><strong id="net-value">—</strong><small>After estimated final TOB and applicable tax</small></article>
             <article class="metric"><p>Gross CSH2 value</p><strong id="gross-value">—</strong><small id="units">—</small></article>
@@ -97,6 +97,6 @@
     <template id="flow-template"><div class="flow-row"><label><span class="sr-only">Date</span><input class="flow-date" type="date" required /></label><label><span class="sr-only">Direction</span><select class="flow-type"><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label><label><span class="sr-only">Net amount in euro</span><input class="flow-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required /></label><button class="delete-button" type="button" aria-label="Remove cash flow">×</button></div></template>
     <script src="./vendor/papaparse.js?v=ac889c7a0c70"></script>
     <script async defer src="https://buttons.github.io/buttons.js"></script>
-    <script type="module" src="./app.js?v=4460d17c0e78"></script>
+    <script type="module" src="./app.js?v=36d65354ce33"></script>
   </body>
 </html>
