@@ -96,9 +96,19 @@ test('estimates a break-even date from a positive 30-day CSH2 price trend', () =
   }, '2026-01-31');
   assert.ok(estimate);
   assert.ok(estimate.date > '2026-01-31');
-  assert.ok(estimate.days <= 365);
+  assert.ok(estimate.days <= 36525);
   assert.equal(estimate.trendDays, 30);
   assert.ok(estimate.trendReturnPercent > 0);
+});
+
+test('estimates a break-even date beyond one year when the price trend remains positive', () => {
+  const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
+    '2026-01-01': 100,
+    '2026-01-31': 100.01
+  }, '2026-01-31');
+  assert.ok(estimate);
+  assert.ok(estimate.days > 365);
+  assert.ok(estimate.days <= 36525);
 });
 
 test('does not estimate break-even without a positive 30-day CSH2 price trend', () => {

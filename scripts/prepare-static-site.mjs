@@ -6,6 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const copyFiles = [
   ['node_modules/papaparse/papaparse.min.js', 'public/vendor/papaparse.js'],
   ['node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.mjs', 'public/vendor/lightweight-charts.js'],
+  ['node_modules/luxon/build/es6/luxon.mjs', 'public/vendor/luxon.mjs'],
   ['src/backtest.mjs', 'public/modules/backtest.mjs'],
   ['src/cash-flow-csv.mjs', 'public/modules/cash-flow-csv.mjs'],
   ['src/static-market-data.mjs', 'public/modules/static-market-data.mjs']

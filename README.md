@@ -25,7 +25,7 @@ The result uses Lightweight Charts to plot cumulative net backtest return agains
 
 ## Missed earnings
 
-Optionally enter unpaid accrued interest alongside the cash flows. The backtest adds it to net inputs (total inflows minus total outflows), then compares that total with the estimated net value if CSH2 were sold today. It highlights the euro amount missed and shows that amount as a percentage of net cash input. When CSH2 is still below net input, its result card turns red and may estimate how many days remain to break even by extending CSH2’s trailing 30-day price trend for up to one year. This is a mechanical scenario, not a price forecast; no estimate is shown when the recent trend is flat, negative, or insufficient.
+Optionally enter unpaid accrued interest alongside the cash flows. The backtest adds it to net inputs (total inflows minus total outflows), then compares that total with the estimated net value if CSH2 were sold today. It highlights the euro amount missed and shows that amount as a percentage of net cash input. When CSH2 is still below net input, its result card turns red and projects the break-even date by extending CSH2’s trailing 30-day price trend for up to 100 years. The time to that date is displayed in a human-readable calendar duration. If the recent trend is flat, negative, or insufficient, the result explains that a break-even date cannot be estimated. This is a mechanical scenario, not a price forecast.
 
 ## GitHub Pages and data refresh
 

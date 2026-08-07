@@ -2,6 +2,7 @@ import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTr
 import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs';
 import { latestAvailablePriceDate } from './modules/static-market-data.mjs';
 import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js';
+import { DateTime, Interval } from './vendor/luxon.mjs';
 
 const storageKey = 'csh2-belgium-flows-v1';
 const settingsStorageKey = 'csh2-belgium-settings-v1';
@@ -25,6 +26,11 @@ let importedCsvRows = [];
 let marketDataPromise;
 
 function today() { return new Date().toISOString().slice(0, 10); }
+function formatBreakEvenDuration(from, to) {
+  return Interval.fromDateTimes(DateTime.fromISO(from, { zone: 'utc' }), DateTime.fromISO(to, { zone: 'utc' }))
+    .toDuration(['years', 'months', 'days'])
+    .toHuman({ listStyle: 'long', unitDisplay: 'long', showZeros: false });
+}
 function setStatus(message, type = '', isEmptyState = false) { status.textContent = message; status.className = `status ${type}`; status.dataset.emptyState = String(isEmptyState); }
 function hasValidFlows() {
   const flows = getFlows();
@@ -193,7 +199,10 @@ function showResult(result, metadata) {
   missedShare.textContent = result.missedSharePercent === undefined ? 'Your net cash input is zero.' : isBelowBreakEven ? `a shortfall equal to ${Math.abs(result.missedSharePercent).toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest` : `which is ${result.missedSharePercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}% of your current balance + unpaid interest`;
   if (isBelowBreakEven && result.breakEvenEstimate) {
     breakEvenEstimate.hidden = false;
-    breakEvenEstimate.textContent = `Estimated break-even in ${result.breakEvenEstimate.days} day${result.breakEvenEstimate.days === 1 ? '' : 's'}. Assumes the CSH2 price keeps its ${result.breakEvenEstimate.trendDays}-day trend (${result.breakEvenEstimate.trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%).`;
+    breakEvenEstimate.textContent = `Estimated break-even in ${formatBreakEvenDuration(result.valuation.date, result.breakEvenEstimate.date)}. Assumes the CSH2 price keeps its ${result.breakEvenEstimate.trendDays}-day trend (${result.breakEvenEstimate.trendReturnPercent.toLocaleString('nl-BE', { maximumFractionDigits: 2 })}%).`;
+  } else if (isBelowBreakEven) {
+    breakEvenEstimate.hidden = false;
+    breakEvenEstimate.textContent = 'Break-even can’t be estimated from the recent price trend.';
   } else {
     breakEvenEstimate.hidden = true;
   }

@@ -208,7 +208,7 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
   };
 }
 
-export function estimateBreakEvenDate(flows, prices, valuationDate, options, { lookbackDays = 30, maximumProjectionDays = 365 } = {}) {
+export function estimateBreakEvenDate(flows, prices, valuationDate, options, { lookbackDays = 30, maximumProjectionDays = 36525 } = {}) {
   const current = runBacktest(flows, prices, valuationDate, options);
   if (current.missedAmount >= 0) return undefined;
   const valuation = closingQuoteOnOrBefore(prices, valuationDate);
