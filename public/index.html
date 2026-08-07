@@ -10,7 +10,7 @@
     <meta property="og:title" content="CSH2 Belgium Backtester" />
     <meta property="og:description" content="Model dated EUR cash flows invested in CSH2, including transaction costs and Belgian tax assumptions." />
     <link rel="icon" href="./favicon.svg?v=c72a35e60ef0" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=8b81164b9ed8" />
+    <link rel="stylesheet" href="./styles.css?v=f460e947a6da" />
   </head>
   <body>
     <main class="app-shell">
@@ -22,6 +22,7 @@
           For purchases before 2026, the tax basis is the higher of the original price and the 31 December 2025 CSH2 close.
         </p>
         <p class="privacy-note">Everything is processed locally on your device; your cash flows and files never leave this machine.</p>
+        <p class="refresh-note">Market data refreshes automatically: CSH2 after midnight Tuesday–Saturday, and €STR at 09:15 Monday–Friday (Brussels time).</p>
       </header>
       <section class="panel input-panel" aria-labelledby="flows-heading">
         <div class="section-title"><div><p class="eyebrow">Input</p><h2 id="flows-heading">Cash flows</h2></div><button id="example-button" class="quiet" type="button">Load example</button></div>
@@ -96,6 +97,6 @@
     <template id="flow-template"><div class="flow-row"><label><span class="sr-only">Date</span><input class="flow-date" type="date" required /></label><label><span class="sr-only">Direction</span><select class="flow-type"><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label><label><span class="sr-only">Net amount in euro</span><input class="flow-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required /></label><button class="delete-button" type="button" aria-label="Remove cash flow">×</button></div></template>
     <script src="./vendor/papaparse.js?v=ac889c7a0c70"></script>
     <script async defer src="https://buttons.github.io/buttons.js"></script>
-    <script type="module" src="./app.js?v=00269bd297bc"></script>
+    <script type="module" src="./app.js?v=4460d17c0e78"></script>
   </body>
 </html>
