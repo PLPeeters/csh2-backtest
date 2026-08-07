@@ -94,5 +94,5 @@ export function mapImportedRows(rows, { dateColumn, amountColumn, dateFormat }) 
     }
     flows.push({ date, type: signedAmount < 0 ? 'outflow' : 'inflow', amount: Math.abs(signedAmount) });
   });
-  return { flows, invalidRows };
+  return { flows: flows.toSorted((first, second) => first.date.localeCompare(second.date)), invalidRows };
 }

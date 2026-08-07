@@ -1,5 +1,5 @@
 import { buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=d0f7ae5c0cfe';
-import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs?v=7faf8b32c294';
+import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs?v=f7148e7603b4';
 import { latestAvailablePriceDate } from './modules/static-market-data.mjs?v=ce1614993ff4';
 import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js?v=66ac22df1b08';
 import { DateTime, Interval } from './vendor/luxon.mjs?v=b495ad5cabea';
