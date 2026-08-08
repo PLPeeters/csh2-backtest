@@ -1,4 +1,4 @@
-import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=1d66bc8cecaa';
+import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from './modules/backtest.mjs?v=e2e8634465d5';
 import { detectCsvMapping, mapImportedRows } from './modules/cash-flow-csv.mjs?v=84ace2eb7f9e';
 import { latestAvailablePriceDate } from './modules/static-market-data.mjs?v=a532d8495275';
 import { ColorType, LineSeries, createChart } from './vendor/lightweight-charts.js?v=66ac22df1b08';
@@ -23,6 +23,8 @@ const csvFileInput = document.querySelector('#csv-file');
 const csvDropzone = document.querySelector('#csv-dropzone');
 const csvFileName = document.querySelector('#csv-file-name');
 const calculateButton = document.querySelector('#calculate-button');
+const benchmarkDirectionButtons = [...document.querySelectorAll('[data-benchmark-direction]')];
+const benchmarkPeriodButtons = [...document.querySelectorAll('[data-benchmark-period]')];
 const formatEuro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 const formatNumber = new Intl.NumberFormat('nl-BE', { maximumFractionDigits: 6 });
 const formatDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' });
@@ -30,7 +32,21 @@ const formatDataUpdatedAt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'mediu
 let activeCharts = [];
 let importedCsvRows = [];
 let marketDataPromise;
+let latestChartInputs;
+let selectedBenchmarkDirection = 'backward';
+const selectedBenchmarkPeriods = { backward: '1y', forward: '1y' };
+let staticBenchmarkHistory;
+let staticBenchmarkHistoryPromise;
+let staticBenchmarkHistoryError;
 const marketDataVersion = new URL(import.meta.url).searchParams.get('v') ?? '';
+const benchmarkPeriods = {
+  '5y': { label: '5Y', lookbackDays: 1825, lookbackDescription: '5 years', forwardDescription: '5 years' },
+  '2y': { label: '2Y', lookbackDays: 730, lookbackDescription: '2 years', forwardDescription: '2 years' },
+  '1y': { label: '1Y', lookbackDays: 365, lookbackDescription: '1 year', forwardDescription: 'year' },
+  '6m': { label: '6M', lookbackDays: 183, lookbackDescription: '6 months', forwardDescription: '6 months' },
+  '3m': { label: '3M', lookbackDays: 90, lookbackDescription: '3 months', forwardDescription: '3 months' },
+  '1m': { label: '1M', lookbackDays: 30, lookbackDescription: '1 month', forwardDescription: 'month' }
+};
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function formatBreakEvenDuration(from, to) {
@@ -189,6 +205,7 @@ function clearAllData() {
   resetCsvImport();
   activeCharts.forEach((chart) => chart.remove());
   activeCharts = [];
+  latestChartInputs = undefined;
   document.querySelector('#results').hidden = true;
   setStatus('All locally saved cash flows and settings were cleared.', 'success');
 }
@@ -259,7 +276,7 @@ function makeChart(containerId) {
     layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#5b746c' },
     grid: { vertLines: { color: '#edf1ed' }, horzLines: { color: '#edf1ed' } },
     rightPriceScale: { borderColor: '#cbd8d1' },
-    timeScale: { borderColor: '#cbd8d1', timeVisible: false }
+    timeScale: { borderColor: '#cbd8d1', timeVisible: false, fixLeftEdge: true, fixRightEdge: true }
   });
   activeCharts.push(chart);
   return chart;
@@ -268,6 +285,58 @@ function addSeries(chart, data, color) {
   const series = chart.addSeries(LineSeries, { color, lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: (value) => `${value.toFixed(2)}%` } });
   series.setData(data);
   return series;
+}
+function focusChartOnBacktest(chart, series, from, to) {
+  if (series.some((point) => point.time >= from && point.time <= to)) {
+    const toBusinessDay = (date) => {
+      const [year, month, day] = date.split('-').map(Number);
+      return { year, month, day };
+    };
+    chart.timeScale().setVisibleRange({ from: toBusinessDay(from), to: toBusinessDay(to) });
+  }
+  else chart.timeScale().fitContent();
+}
+function prepareStaticBenchmarkHistory(prices, rates, to) {
+  if (staticBenchmarkHistoryPromise) return staticBenchmarkHistoryPromise;
+  const worker = new Worker(new URL('./benchmark-history-worker.js?v=af1343b21c8f', import.meta.url), { type: 'module' });
+  staticBenchmarkHistoryPromise = new Promise((resolve, reject) => {
+    worker.addEventListener('message', ({ data }) => resolve(data), { once: true });
+    worker.addEventListener('error', reject, { once: true });
+  }).then((history) => {
+    staticBenchmarkHistory = history;
+    if (latestChartInputs) {
+      const { flows, prices: currentPrices, rates: currentRates, from, to: currentTo, options } = latestChartInputs;
+      renderCharts(flows, currentPrices, currentRates, from, currentTo, options);
+    }
+    return history;
+  }).catch((error) => {
+    staticBenchmarkHistoryError = error;
+    if (latestChartInputs) {
+      const { flows, prices: currentPrices, rates: currentRates, from, to: currentTo, options } = latestChartInputs;
+      renderCharts(flows, currentPrices, currentRates, from, currentTo, options);
+    }
+    throw error;
+  }).finally(() => worker.terminate());
+  worker.postMessage({ prices, rates, to });
+  return staticBenchmarkHistoryPromise;
+}
+function renderStaticChart(chartId, loadingId, data, from, to) {
+  const container = document.querySelector(chartId);
+  const loading = document.querySelector(loadingId);
+  if (!data) {
+    container.hidden = true;
+    loading.hidden = false;
+    loading.textContent = staticBenchmarkHistoryError ? 'Benchmark history could not be prepared.' : 'Preparing benchmark history…';
+    return;
+  }
+  loading.hidden = true;
+  container.hidden = false;
+  const csh2Series = data.csh2.map(({ date, value }) => ({ time: date, value }));
+  const overnightSeries = data.overnight.map(({ date, value }) => ({ time: date, value }));
+  const chart = makeChart(chartId);
+  addSeries(chart, csh2Series, '#1d6a54');
+  addSeries(chart, overnightSeries, '#c7943c');
+  focusChartOnBacktest(chart, [...csh2Series, ...overnightSeries], from, to);
 }
 function loadMarketData() {
   if (!marketDataPromise) {
@@ -284,20 +353,29 @@ function loadMarketData() {
   return marketDataPromise;
 }
 function renderCharts(flows, prices, rates, from, to, options) {
+  latestChartInputs = { flows, prices, rates, from, to, options };
   activeCharts.forEach((chart) => chart.remove());
   activeCharts = [];
-  const returnChart = makeChart('#return-chart');
   const csh2ReturnSeries = buildBacktestReturnSeries(flows, prices, options).map((point) => ({ time: point.date, value: point.value }));
   const overnightReturnSeries = buildOvernightBenchmarkReturnSeries(flows, prices, rates, to, from, to, options).map((point) => ({ time: point.date, value: point.value }));
-  addSeries(returnChart, csh2ReturnSeries, '#1d6a54');
-  addSeries(returnChart, overnightReturnSeries, '#c7943c');
-  returnChart.timeScale().fitContent();
-  const rateChart = makeChart('#rate-chart');
-  const csh2RateSeries = buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to).map((point) => ({ time: point.date, value: point.value }));
-  const overnightRateSeries = buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to).map((point) => ({ time: point.date, value: point.value }));
-  addSeries(rateChart, csh2RateSeries, '#1d6a54');
-  addSeries(rateChart, overnightRateSeries, '#c7943c');
-  rateChart.timeScale().fitContent();
+  const hasReturnSeries = csh2ReturnSeries.length > 0 || overnightReturnSeries.length > 0;
+  document.querySelector('#return-chart').hidden = !hasReturnSeries;
+  document.querySelector('#return-chart-empty').hidden = hasReturnSeries;
+  if (hasReturnSeries) {
+    const returnChart = makeChart('#return-chart');
+    addSeries(returnChart, csh2ReturnSeries, '#1d6a54');
+    addSeries(returnChart, overnightReturnSeries, '#c7943c');
+    returnChart.timeScale().fitContent();
+  }
+  const periodKey = selectedBenchmarkPeriods[selectedBenchmarkDirection];
+  const period = benchmarkPeriods[periodKey];
+  const isForward = selectedBenchmarkDirection === 'forward';
+  document.querySelector('#benchmark-heading').textContent = `${isForward ? 'Forward' : 'Backward'} annualized returns · ${period.label}`;
+  document.querySelector('#benchmark-explanation').textContent = isForward
+    ? `Each point shows how CSH2 and the euro overnight benchmark performed over the following ${period.forwardDescription}. Use the date to compare a savings-account rate available then with what actually followed.`
+    : `Each point compares its value with the value ${period.lookbackDescription} earlier and annualizes the return.`;
+  document.querySelector('#benchmark-chart').setAttribute('aria-label', `${isForward ? 'Forward' : 'Backward'} annualized CSH2 return compared with the Euro overnight benchmark over ${period.lookbackDescription}`);
+  renderStaticChart('#benchmark-chart', '#benchmark-chart-loading', staticBenchmarkHistory?.[isForward ? 'forward' : 'lookback'][periodKey], from, to);
 }
 async function calculate() {
   const flows = getFlows();
@@ -309,6 +387,7 @@ async function calculate() {
   const { data, rateData } = await loadMarketData();
   const valuationDate = latestAvailablePriceDate(data.prices, today());
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
+  prepareStaticBenchmarkHistory(data.prices, rateData.rates, valuationDate).catch(() => {});
   const isPayout = selectedInterestMode() === 'payout';
   const options = { applyCapitalGainsExemption: capitalGainsExemption.checked, applyReyndersTax: reyndersTax.checked, buyWholeSharesOnly: buyWholeSharesOnly.checked, unpaidAccruedInterest: isPayout ? 0 : Number(unpaidAccruedInterest.value || 0), brokerTransactionFee: Number(brokerTransactionFee.value || 0) };
   const result = runBacktest(flows, data.prices, valuationDate, options);
@@ -383,9 +462,38 @@ interestPayoutAmount.addEventListener('change', () => {
   refreshInterestResult();
 });
 brokerTransactionFee.addEventListener('change', saveSettings);
+function rerenderCharts() {
+  if (latestChartInputs) {
+    const { flows, prices, rates, from, to, options } = latestChartInputs;
+    renderCharts(flows, prices, rates, from, to, options);
+  }
+}
+function syncBenchmarkControls() {
+  const isForward = selectedBenchmarkDirection === 'forward';
+  benchmarkDirectionButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.benchmarkDirection === selectedBenchmarkDirection)));
+  benchmarkPeriodButtons.forEach((button) => {
+    button.hidden = isForward && button.hasAttribute('data-backward-only');
+    button.setAttribute('aria-pressed', String(button.dataset.benchmarkPeriod === selectedBenchmarkPeriods[selectedBenchmarkDirection]));
+  });
+  document.querySelector('#benchmark-period-picker').setAttribute('aria-label', `${isForward ? 'Forward' : 'Backward'} comparison period`);
+}
+benchmarkDirectionButtons.forEach((button) => button.addEventListener('click', () => {
+  selectedBenchmarkDirection = button.dataset.benchmarkDirection;
+  syncBenchmarkControls();
+  rerenderCharts();
+}));
+benchmarkPeriodButtons.forEach((button) => button.addEventListener('click', () => {
+  selectedBenchmarkPeriods[selectedBenchmarkDirection] = button.dataset.benchmarkPeriod;
+  syncBenchmarkControls();
+  rerenderCharts();
+}));
+syncBenchmarkControls();
 restoreFlows();
 restoreSettings();
 syncInterestMode();
 updateEmptyFlowStatus();
 updateCalculateButtonState();
-loadMarketData().catch(() => {});
+loadMarketData().then(({ data, rateData }) => {
+  const valuationDate = latestAvailablePriceDate(data.prices, today());
+  if (valuationDate) prepareStaticBenchmarkHistory(data.prices, rateData.rates, valuationDate).catch(() => {});
+}).catch(() => {});

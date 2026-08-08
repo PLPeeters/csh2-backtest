@@ -16,6 +16,8 @@ export { runBacktest } from './backtest/simulation.mjs';
 export { assessInterestPayoutTiming, estimateBreakEvenDate } from './backtest/projections.mjs';
 export {
   buildBacktestReturnSeries,
+  buildForwardAnnualizedCsh2ReturnSeries,
+  buildForwardAnnualizedOvernightBenchmarkReturnSeries,
   buildOvernightBenchmarkReturnSeries,
   buildTrailingAnnualizedCsh2ReturnSeries,
   buildTrailingAnnualizedOvernightBenchmarkReturnSeries

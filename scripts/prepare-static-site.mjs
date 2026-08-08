@@ -28,6 +28,7 @@ const moduleAssetPaths = [
   'modules/backtest/shared.mjs',
   'modules/backtest/simulation.mjs',
   'modules/backtest/taxation.mjs',
+  'benchmark-history-worker.js',
   'modules/cash-flow-csv.mjs',
   'modules/static-market-data.mjs'
 ];
@@ -76,7 +77,7 @@ function replaceVersion(url, version) {
 
 const appPath = resolve(root, 'public/app.js');
 let app = await readFile(appPath, 'utf8');
-for (const assetPath of assetPaths.filter((assetPath) => assetPath.startsWith('modules/') || assetPath.startsWith('vendor/'))) {
+for (const assetPath of assetPaths.filter((assetPath) => assetPath.startsWith('modules/') || assetPath.startsWith('vendor/') || assetPath === 'benchmark-history-worker.js')) {
   app = app.replace(replaceVersion(`./${assetPath}`), versionUrl(assetPath));
 }
 await writeFile(appPath, app);

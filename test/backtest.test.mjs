@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -272,6 +272,45 @@ test('uses pre-flow CSH2 price history to provide a trailing annualized return f
   assert.ok(series[0].value > 0);
 });
 
+test('uses a selected 1-month lookback while retaining annualization for CSH2 returns', () => {
+  const series = buildTrailingAnnualizedCsh2ReturnSeries({
+    '2025-12-01': 100,
+    '2026-01-01': 110
+  }, '2026-01-01', '2026-01-01', { lookbackDays: 30 });
+  assert.equal(series.length, 1);
+  assert.equal(series[0].date, '2026-01-01');
+  assert.ok(series[0].value > 100);
+});
+
+test('uses a selected 5-year lookback while retaining annualization for CSH2 returns', () => {
+  const series = buildTrailingAnnualizedCsh2ReturnSeries({
+    '2021-01-01': 100,
+    '2026-01-01': 200
+  }, '2026-01-01', '2026-01-01', { lookbackDays: 1825 });
+  assert.equal(series.length, 1);
+  assert.ok(series[0].value > 14 && series[0].value < 15);
+});
+
+test('builds a forward annualized CSH2 return at the start of the measured period', () => {
+  const series = buildForwardAnnualizedCsh2ReturnSeries({
+    '2025-01-01': 100,
+    '2026-01-01': 110
+  }, '2025-01-01', '2026-01-01');
+  assert.equal(series.length, 1);
+  assert.equal(series[0].date, '2025-01-01');
+  assert.ok(series[0].value > 9 && series[0].value < 11);
+});
+
+test('keeps all available annualized CSH2 points when no backtest start date is supplied', () => {
+  const prices = {
+    '2025-01-01': 100,
+    '2026-01-01': 110,
+    '2027-01-01': 121
+  };
+  assert.deepEqual(buildTrailingAnnualizedCsh2ReturnSeries(prices, '', '2027-01-01', { lookbackDays: 365 }).map((point) => point.date), ['2026-01-01', '2027-01-01']);
+  assert.deepEqual(buildForwardAnnualizedCsh2ReturnSeries(prices, '', '2027-01-01', { lookbackDays: 365 }).map((point) => point.date), ['2025-01-01', '2026-01-01']);
+});
+
 test('uses the same trailing annualization for the compounded overnight benchmark', () => {
   const rates = {};
   const start = new Date('2025-10-01T00:00:00Z');
@@ -283,6 +322,25 @@ test('uses the same trailing annualization for the compounded overnight benchmar
   const series = buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, '2025-12-30', '2025-12-30');
   assert.equal(series.length, 1);
   assert.equal(series[0].date, '2025-12-30');
+  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+});
+
+test('uses a selected 1-month lookback while retaining annualization for the overnight benchmark', () => {
+  const series = buildTrailingAnnualizedOvernightBenchmarkReturnSeries({
+    '2025-12-01': 3,
+    '2026-01-01': 3
+  }, '2026-01-01', '2026-01-01', { lookbackDays: 30 });
+  assert.equal(series.length, 1);
+  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+});
+
+test('builds a forward annualized overnight benchmark return at the start of the measured period', () => {
+  const series = buildForwardAnnualizedOvernightBenchmarkReturnSeries({
+    '2025-01-01': 3,
+    '2026-01-01': 3
+  }, '2025-01-01', '2026-01-01');
+  assert.equal(series.length, 1);
+  assert.equal(series[0].date, '2025-01-01');
   assert.ok(Math.abs(series[0].value - 3) < 0.000001);
 });
 

@@ -18,12 +18,27 @@ export function buildBacktestReturnSeries(flows, prices, options) {
 }
 
 function trailingAnnualizedReturnSeries(points, from, lookbackDays) {
+  let priorIndex = 0;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
-    const prior = [...points.slice(0, index)].reverse().find((candidate) => daysBetween(candidate.date, point.date) >= lookbackDays);
-    if (!prior) return undefined;
+    while (priorIndex + 1 < index && daysBetween(points[priorIndex + 1].date, point.date) >= lookbackDays) priorIndex += 1;
+    const prior = points[priorIndex];
+    if (priorIndex >= index || daysBetween(prior.date, point.date) < lookbackDays) return undefined;
     const days = daysBetween(prior.date, point.date);
     return { date: point.date, value: ((point.value / prior.value) ** (365 / days) - 1) * 100 };
+  }).filter(Boolean);
+}
+
+function forwardAnnualizedReturnSeries(points, from, lookbackDays) {
+  let futureIndex = 1;
+  return points.map((point, index) => {
+    if (point.date < from) return undefined;
+    futureIndex = Math.max(futureIndex, index + 1);
+    while (futureIndex < points.length && daysBetween(point.date, points[futureIndex].date) < lookbackDays) futureIndex += 1;
+    const future = points[futureIndex];
+    if (!future) return undefined;
+    const days = daysBetween(point.date, future.date);
+    return { date: point.date, value: ((future.value / point.value) ** (365 / days) - 1) * 100 };
   }).filter(Boolean);
 }
 
@@ -33,6 +48,14 @@ export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { look
     .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
     .sort((left, right) => left.date.localeCompare(right.date));
   return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+}
+
+export function buildForwardAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 365 } = {}) {
+  const points = Object.entries(prices)
+    .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
+    .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+  return forwardAnnualizedReturnSeries(points, from, lookbackDays);
 }
 
 export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 90 } = {}) {
@@ -49,6 +72,22 @@ export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, fro
       return { date, value };
     });
   return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+}
+
+export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 365 } = {}) {
+  let value = 1;
+  let previousDate;
+  let previousRate;
+  const points = Object.entries(rates)
+    .filter(([date, rate]) => date <= to && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, rate]) => {
+      if (previousDate) value *= (1 + previousRate / 100) ** (daysBetween(previousDate, date) / 365);
+      previousDate = date;
+      previousRate = rate;
+      return { date, value };
+    });
+  return forwardAnnualizedReturnSeries(points, from, lookbackDays);
 }
 
 function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options) {

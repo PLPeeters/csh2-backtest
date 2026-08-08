@@ -101,15 +101,24 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .metric.main small { color: #c9ddd3; }
 .source { margin: 0; color: #64766d; font-size: .8rem; text-align: right; }
 .chart-panel { margin: 18px 0; }
+.chart-panel .section-title { align-items: flex-start; }
 .chart { width: 100%; height: 290px; }
+.chart-explanation { margin: 10px 0 0; color: #5b7066; font-size: .8rem; line-height: 1.45; }
+.benchmark-title { min-width: 0; }
+.benchmark-title .chart-explanation { max-width: 620px; }
+.chart-loading { display: grid; min-height: 290px; margin: 0; place-items: center; color: #5b7066; font-size: .9rem; }
+.chart-empty { display: grid; min-height: 290px; margin: 0; place-items: center; color: #5b7066; font-size: .9rem; text-align: center; }
 .chart-key { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 4px; color: #5b7066; font-size: .8rem; }
 .chart-key span { display: inline-flex; align-items: center; gap: 6px; }
 .chart-key span::before { width: 8px; height: 8px; border-radius: 50%; content: ''; }
 .chart-key-csh2::before { background: #1d6a54; }
 .chart-key-estr::before { background: #bd842b; }
-.rate-chart { margin: 20px 0; box-shadow: none; }
-.rate-chart .section-title { margin-bottom: 8px; }
-.rate-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.benchmark-control { display: grid; width: min(100%, 294px); gap: 8px; }
+.benchmark-mode-picker, .benchmark-period-picker { display: flex; width: 100%; overflow-x: auto; border: 1px solid #cbd7d0; border-radius: 7px; background: #fff; }
+.benchmark-mode-picker button, .benchmark-period-picker button { flex: 1 0 46px; min-height: 38px; border: 0; border-radius: 0; padding: 0 11px; background: transparent; color: #39574b; font-size: .8rem; }
+.benchmark-mode-picker button + button, .benchmark-period-picker button + button { border-left: 1px solid #cbd7d0; }
+.benchmark-mode-picker button:hover, .benchmark-period-picker button:hover { background: #f1f5f2; }
+.benchmark-mode-picker button[aria-pressed="true"], .benchmark-period-picker button[aria-pressed="true"] { background: #1d4f3e; color: #fff; }
 .rate-grid { stroke: #dfe7e1; stroke-width: 1; }
 .rate-axis-line { stroke: #aebfb6; stroke-width: 1; }
 .rate-axis { fill: #647a71; font-size: 12px; }
