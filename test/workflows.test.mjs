@@ -21,8 +21,13 @@ test('schedules CSH2 refreshes at midnight Tuesday through Saturday Brussels tim
 });
 
 test('publishes changed refreshes through the reusable Pages workflow', async () => {
-  for (const name of ['refresh-overnight-rates.yml', 'refresh-csh2.yml']) {
-    assert.match(await workflow(name), /uses: \.\/\.github\/workflows\/pages\.yml/);
-  }
-  assert.match(await workflow('pages.yml'), /workflow_call:/);
+  const overnight = await workflow('refresh-overnight-rates.yml');
+  const csh2 = await workflow('refresh-csh2.yml');
+  assert.match(overnight, /src\/assets\/data\/overnight-rates\.json/);
+  assert.match(csh2, /src\/assets\/data\/csh2-prices\.json/);
+  for (const contents of [overnight, csh2]) assert.match(contents, /uses: \.\/\.github\/workflows\/pages\.yml/);
+  const pages = await workflow('pages.yml');
+  assert.match(pages, /workflow_call:/);
+  assert.match(pages, /npm run verify/);
+  assert.match(pages, /path: dist/);
 });

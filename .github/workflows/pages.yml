@@ -27,11 +27,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run prepare-site
+      - run: PLAYWRIGHT_BROWSERS_PATH=.playwright npx playwright install --with-deps chromium
+      - run: npm run verify
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: dist
   deploy:
     environment:
       name: github-pages

@@ -19,7 +19,7 @@ test('does not treat a fallback price as the latest published close', () => {
 });
 
 test('publishes the full euro overnight benchmark history', async () => {
-  const benchmark = JSON.parse(await readFile(new URL('../public/data/overnight-rates.json', import.meta.url), 'utf8'));
+  const benchmark = JSON.parse(await readFile(new URL('../src/assets/data/overnight-rates.json', import.meta.url), 'utf8'));
   assert.deepEqual(benchmark.segments, [
     { id: 'eonia', label: 'EONIA', start: '2015-03-13', end: '2018-08-31', series: 'EON/D.EONIA_TO.RATE' },
     { id: 'pre-estr', label: 'Pre-Euro Short-Term Rate', start: '2018-09-03', end: '2019-09-30', series: 'MMSR/B.U2._X._Z.S12._Z.U.BO.WT.D76.MA._Z._Z.EUR._Z' },

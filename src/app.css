@@ -77,6 +77,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .status { min-height: 1.4em; margin: 14px 0 0; color: #627269; font-size: .9rem; }
 .status.error { color: #a52f24; }
 .status.success { color: #16634b; }
+.stale-results { margin: 12px 0 0; border-left: 3px solid #b48432; background: #fff9e8; padding: 10px 12px; color: #6b511b; font-size: .875rem; line-height: 1.45; }
 
 #results { margin-top: 42px; }
 .result-heading { margin-bottom: 18px; }

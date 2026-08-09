@@ -2,5 +2,8 @@ data/csh2-price-cache.json
 data/estr-rate-cache.json
 node_modules/
 .npm-cache/
-public/modules/
-public/vendor/
+dist/
+.vite/
+.playwright/
+playwright-report/
+test-results/

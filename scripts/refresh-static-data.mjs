@@ -5,10 +5,10 @@ import { parseRefreshMode } from './refresh-data-mode.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const refreshMode = parseRefreshMode(process.argv.slice(2));
-const pricePath = resolve(root, 'public/data/csh2-prices.json');
+const pricePath = resolve(root, 'src/assets/data/csh2-prices.json');
 const priceSource = 'Google Finance historical data, with daily Yahoo Finance updates';
-const benchmarkPath = resolve(root, 'public/data/overnight-rates.json');
-const legacyRatePath = resolve(root, 'public/data/estr-rates.json');
+const benchmarkPath = resolve(root, 'src/assets/data/overnight-rates.json');
+const legacyRatePath = resolve(root, 'src/assets/data/estr-rates.json');
 const historicalStart = '2015-03-13';
 const estrCorrectionWindowDays = 7;
 const ecbRetryDelaysMilliseconds = [10_000, 20_000, 40_000, 80_000];

@@ -1,0 +1,81 @@
+import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
+import { blankFlow, clearStoredState, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
+
+export interface BacktestDependencies {
+  storage: Storage;
+  today(): string;
+  loadMarketData(): Promise<MarketDataBundle>;
+  calculate(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView;
+  prepareBenchmark(request: { prices: MarketDataBundle['data']['prices']; rates: MarketDataBundle['rateData']['rates']; to: string }): Promise<BenchmarkHistory>;
+}
+
+function cloneFlows(flows: CashFlowDraft[]) {
+  return flows.map((flow) => ({ ...flow }));
+}
+
+function cloneSettings(settings: CalculationSettings) {
+  return { ...settings };
+}
+
+function calculationInputSignature(flows: CashFlowDraft[], settings: CalculationSettings) {
+  return JSON.stringify({ flows: flows.map(({ date, type, amount }) => ({ date, type, amount })), settings });
+}
+
+export function createBacktestController(dependencies: BacktestDependencies) {
+  const stored = loadStoredState(dependencies.storage);
+  let flows = $state(stored.flows);
+  let settings = $state(stored.settings);
+  let status = $state<StatusState>({ kind: 'idle', message: '' });
+  let view = $state<CalculationView>();
+  let benchmark = $state<BenchmarkHistory>();
+  let benchmarkStatus = $state<StatusState>({ kind: 'idle', message: '' });
+  let direction = $state<BenchmarkDirection>('backward');
+  let backwardPeriod = $state<BackwardPeriod>('1y');
+  let forwardPeriod = $state<ForwardPeriod>('1y');
+  let submittedInputSignature = $state<string>();
+  let requestGeneration = 0;
+
+  const persist = () => { saveFlows(dependencies.storage, flows); saveSettings(dependencies.storage, settings); };
+  return {
+    get flows() { return flows; }, get settings() { return settings; }, get status() { return status; }, get view() { return view; },
+    get benchmark() { return benchmark; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
+    get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; },
+    get resultIsStale() { return !!view && submittedInputSignature !== calculationInputSignature(flows, settings); },
+    get valid() { return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && (settings.interestMode === 'accrued' || !!settings.interestPayoutDate && Number(settings.interestPayoutAmount) > 0); },
+    addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
+    removeFlow(id: string) { flows = flows.filter((flow) => flow.id !== id); if (!flows.length) flows = [blankFlow()]; persist(); },
+    replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },
+    updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') flow.type = value; persist(); } },
+    updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
+    loadExample() { flows = [{ id: crypto.randomUUID(), date: '2025-04-01', type: 'inflow', amount: '5000' }, { id: crypto.randomUUID(), date: '2025-10-01', type: 'inflow', amount: '750' }, { id: crypto.randomUUID(), date: '2026-04-01', type: 'outflow', amount: '600' }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
+    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; benchmark = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
+    setDirection(value: BenchmarkDirection) { direction = value; },
+    setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },
+    async calculate() {
+      const generation = ++requestGeneration;
+      const submittedFlows = cloneFlows(flows);
+      const submittedSettings = cloneSettings(settings);
+      const nextSubmittedInputSignature = calculationInputSignature(submittedFlows, submittedSettings);
+      persist();
+      status = { kind: 'loading', message: 'Loading the latest published CSH2 data…' };
+      try {
+        const market = await dependencies.loadMarketData();
+        const nextView = dependencies.calculate(submittedFlows, submittedSettings, market, dependencies.today());
+        if (generation !== requestGeneration) return;
+        view = nextView;
+        submittedInputSignature = nextSubmittedInputSignature;
+        status = { kind: 'success', message: `Calculated using the ${nextView.result.valuation.date} close.` };
+        benchmarkStatus = { kind: 'loading', message: 'Preparing benchmark history…' };
+        dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to: nextView.to }).then((history) => {
+          if (generation !== requestGeneration) return;
+          benchmark = history; benchmarkStatus = { kind: 'success', message: '' };
+        }).catch(() => { if (generation === requestGeneration) benchmarkStatus = { kind: 'error', message: 'Benchmark history could not be prepared.' }; });
+      } catch (error) {
+        if (generation !== requestGeneration) return;
+        view = undefined;
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  };
+}
+export type BacktestController = ReturnType<typeof createBacktestController>;
