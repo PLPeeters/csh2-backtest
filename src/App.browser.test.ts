@@ -33,6 +33,28 @@ describe('CSH2 application inputs', () => {
     await expect.element(interest).toBeDisabled();
   });
 
+  it('accepts accrued and future interest together only when the future payout includes the accrued amount', async () => {
+    render(App);
+    await page.getByLabelText('Date').fill('2026-01-02');
+    await page.getByLabelText('Net amount in euro').fill('1000');
+    const calculate = page.getByRole('button', { name: 'Calculate with latest data' });
+    const accrued = page.getByLabelText('Unpaid accrued interest (€)');
+    const payoutDate = page.getByLabelText('Future interest payout on');
+    const payoutAmount = page.getByLabelText('Future interest payout (€)');
+
+    await expect.element(accrued).toBeVisible();
+    await expect.element(payoutDate).toBeVisible();
+    await expect.element(payoutAmount).toBeVisible();
+    await accrued.fill('50');
+    await payoutDate.fill('2026-12-31');
+    await payoutAmount.fill('40');
+    await payoutDate.click();
+    await expect.element(calculate).toBeDisabled();
+    await payoutAmount.fill('50');
+    await payoutDate.click();
+    await expect.element(calculate).toBeEnabled();
+  });
+
   it('recovers malformed storage and preserves the CGT preference while Reynders Tax is active', async () => {
     localStorage.setItem('csh2-belgium-flows-v1', '{broken');
     render(App);

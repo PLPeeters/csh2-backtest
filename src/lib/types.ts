@@ -1,5 +1,4 @@
 export type CashFlowType = 'inflow' | 'outflow';
-export type InterestMode = 'accrued' | 'payout';
 export type BenchmarkDirection = 'backward' | 'forward';
 export type BackwardPeriod = '1m' | '3m' | '6m' | '1y' | '2y' | '5y';
 export type ForwardPeriod = '1m' | '3m' | '6m' | '1y';
@@ -10,7 +9,6 @@ export interface CalculationSettings {
   applyCapitalGainsExemption: boolean;
   applyReyndersTax: boolean;
   buyWholeSharesOnly: boolean;
-  interestMode: InterestMode;
   unpaidAccruedInterest: string;
   interestPayoutDate: string;
   interestPayoutAmount: string;

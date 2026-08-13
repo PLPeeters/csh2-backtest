@@ -78,14 +78,8 @@
   </div>
   <div class="controls flow-controls"><button class="quiet" type="button" onclick={() => controller.addFlow()}>Add cash flow</button></div>
   <div class="cash-flow-actions"><div class="interest-controls">
-    <div class="interest-mode" role="radiogroup" aria-label="Interest input type">
-      <label><input type="radio" name="interest-mode" value="accrued" checked={controller.settings.interestMode === 'accrued'} onchange={() => controller.updateSetting('interestMode', 'accrued')} />Unpaid accrued interest</label>
-      <label><input type="radio" name="interest-mode" value="payout" checked={controller.settings.interestMode === 'payout'} onchange={() => controller.updateSetting('interestMode', 'payout')} />Future interest payout</label>
-    </div>
-    {#if controller.settings.interestMode === 'accrued'}
-      <label class="accrued-interest">Unpaid accrued interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.unpaidAccruedInterest} onchange={(event) => controller.updateSetting('unpaidAccruedInterest', event.currentTarget.value)} /></label>
-    {:else}
-      <div class="payout-interest-fields"><label class="accrued-interest">Interest payout date<input type="date" value={controller.settings.interestPayoutDate} onchange={(event) => controller.updateSetting('interestPayoutDate', event.currentTarget.value)} /></label><label class="accrued-interest">Interest payout amount (€)<input type="number" min="0.01" step="0.01" placeholder="0.00" value={controller.settings.interestPayoutAmount} onchange={(event) => controller.updateSetting('interestPayoutAmount', event.currentTarget.value)} /></label></div>
-    {/if}
+    <label class="accrued-interest">Unpaid accrued interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.unpaidAccruedInterest} onchange={(event) => controller.updateSetting('unpaidAccruedInterest', event.currentTarget.value)} /></label>
+    <div class="payout-interest-fields"><label class="accrued-interest">Future interest payout on<input type="date" value={controller.settings.interestPayoutDate} onchange={(event) => controller.updateSetting('interestPayoutDate', event.currentTarget.value)} /></label><label class="accrued-interest">Future interest payout (€)<input type="number" min={Math.max(0.01, Number(controller.settings.unpaidAccruedInterest) || 0)} step="0.01" placeholder="0.00" value={controller.settings.interestPayoutAmount} onchange={(event) => controller.updateSetting('interestPayoutAmount', event.currentTarget.value)} /></label></div>
+    <p class="interest-help">Optional. The future payout amount includes the unpaid accrued interest and cannot be smaller.</p>
   </div></div>
 </section>

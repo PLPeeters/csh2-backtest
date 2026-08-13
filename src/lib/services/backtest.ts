@@ -7,7 +7,7 @@ function options(settings: CalculationSettings) {
     applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
     applyReyndersTax: settings.applyReyndersTax,
     buyWholeSharesOnly: settings.buyWholeSharesOnly,
-    unpaidAccruedInterest: settings.interestMode === 'payout' ? 0 : Number(settings.unpaidAccruedInterest || 0),
+    unpaidAccruedInterest: Number(settings.unpaidAccruedInterest || 0),
     brokerTransactionFee: Number(settings.brokerTransactionFee || 0)
   };
 }
@@ -20,16 +20,24 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   const investedFlows = normalized.filter((flow) => !flow.interestPayment);
   const firstInvestment = investedFlows.filter((flow) => flow.type === 'inflow').toSorted((left, right) => left.date.localeCompare(right.date))[0];
   if (!firstInvestment) throw new Error('Add at least one inflow that is not an interest payment.');
+  const unpaidAccruedInterest = Number(settings.unpaidAccruedInterest || 0);
+  if (!Number.isFinite(unpaidAccruedInterest) || unpaidAccruedInterest < 0) throw new Error('Unpaid accrued interest must be a non-negative amount.');
+  const hasPayoutDate = !!settings.interestPayoutDate;
+  const hasPayoutAmount = settings.interestPayoutAmount !== '';
+  if (hasPayoutDate !== hasPayoutAmount) throw new Error('Enter both the future interest payout date and amount.');
+  const interestPayoutAmount = Number(settings.interestPayoutAmount || 0);
+  if (hasPayoutAmount && (!Number.isFinite(interestPayoutAmount) || interestPayoutAmount <= 0)) throw new Error('Interest payout amount must be a positive amount.');
+  if (hasPayoutAmount && interestPayoutAmount < unpaidAccruedInterest) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
   const valuationDate = latestAvailablePriceDate(market.data.prices, today);
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
   const calculationOptions = options(settings);
   const result = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions) as BacktestResult;
-  result.interestPayoutAssessment = settings.interestMode === 'payout'
-    ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, Number(settings.interestPayoutAmount || 0)) as BacktestResult['interestPayoutAssessment']
+  result.interestPayoutAssessment = hasPayoutDate
+    ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, interestPayoutAmount) as BacktestResult['interestPayoutAssessment']
     : undefined;
   result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions);
-  const projected = settings.interestMode === 'payout'
-    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, Number(settings.interestPayoutAmount || 0), calculationOptions)
+  const projected = hasPayoutDate
+    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, interestPayoutAmount, calculationOptions)
     : undefined;
   return {
     result,

@@ -21,6 +21,16 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
   return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings });
 }
 
+function interestSettingsAreValid(settings: CalculationSettings) {
+  const accruedInterest = Number(settings.unpaidAccruedInterest || 0);
+  if (!Number.isFinite(accruedInterest) || accruedInterest < 0) return false;
+  const hasPayoutDate = !!settings.interestPayoutDate;
+  const hasPayoutAmount = settings.interestPayoutAmount !== '';
+  if (!hasPayoutDate && !hasPayoutAmount) return true;
+  const payoutAmount = Number(settings.interestPayoutAmount);
+  return hasPayoutDate && hasPayoutAmount && Number.isFinite(payoutAmount) && payoutAmount > 0 && payoutAmount >= accruedInterest;
+}
+
 export function createBacktestController(dependencies: BacktestDependencies) {
   const stored = loadStoredState(dependencies.storage);
   let flows = $state(stored.flows);
@@ -41,7 +51,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     get benchmark() { return benchmark; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
     get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; },
     get resultIsStale() { return !!view && submittedInputSignature !== calculationInputSignature(flows, settings); },
-    get valid() { return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && (settings.interestMode === 'accrued' || !!settings.interestPayoutDate && Number(settings.interestPayoutAmount) > 0); },
+    get valid() { return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && interestSettingsAreValid(settings); },
     addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
     removeFlow(id: string) { flows = flows.filter((flow) => flow.id !== id); if (!flows.length) flows = [blankFlow()]; persist(); },
     replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },

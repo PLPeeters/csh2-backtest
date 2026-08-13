@@ -21,6 +21,7 @@ function trailingPriceTrend(prices, valuationDate, lookbackDays) {
 /** Projects all cumulative-return lines to a future interest payout on common assumptions. */
 export function buildReturnProjection(flows, prices, rates, valuationDate, from, payoutDate, payoutAmount, options, { lookbackDays = 30 } = {}) {
   if (!payoutDate || !Number.isFinite(payoutAmount) || payoutAmount <= 0 || payoutDate <= valuationDate) return undefined;
+  if (payoutAmount < (options.unpaidAccruedInterest ?? 0)) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
   const trend = trailingPriceTrend(prices, valuationDate, lookbackDays);
   if (!trend) return undefined;
   const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
@@ -49,7 +50,7 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
     overnight.push({ date, value: ((overnightBalance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 });
   }
 
-  const currentAccountReturn = (paidInterest / externalInflows) * 100;
+  const currentAccountReturn = ((paidInterest + (options.unpaidAccruedInterest ?? 0)) / externalInflows) * 100;
   return {
     csh2,
     overnight,
@@ -71,6 +72,7 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
 export function assessInterestPayoutTiming(flows, prices, valuationDate, options, payoutDate, payoutAmount, { lookbackDays = 30 } = {}) {
   if (!payoutDate && !payoutAmount) return undefined;
   if (!Number.isFinite(payoutAmount) || payoutAmount <= 0) throw new Error('Interest payout amount must be a positive amount.');
+  if (payoutAmount < (options.unpaidAccruedInterest ?? 0)) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(payoutDate)) throw new Error('Interest payout date must be a valid date.');
   if (payoutDate <= valuationDate) throw new Error('Interest payout date must be after the latest CSH2 valuation date.');
   const currentBalance = flows.reduce((sum, flow) => sum + (flow.type === 'inflow' ? flow.amount : -flow.amount), 0);

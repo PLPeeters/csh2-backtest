@@ -133,6 +133,25 @@ test('projects all cumulative-return series to a future interest payout', () => 
   assert.equal(projection.trendDays, 59);
 });
 
+test('treats unpaid accrued interest as part of the future payout rather than adding it twice', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, { unpaidAccruedInterest: 25 });
+
+  assert.deepEqual(projection.account, [
+    { date: '2026-03-02', value: 2.5 },
+    { date: '2026-04-02', value: 5 }
+  ]);
+  assert.throws(
+    () => buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 20, { unpaidAccruedInterest: 25 }),
+    /cannot be smaller/
+  );
+  assert.throws(
+    () => assessInterestPayoutTiming(flows, prices, '2026-03-02', { unpaidAccruedInterest: 25 }, '2026-04-02', 20),
+    /cannot be smaller/
+  );
+});
+
 test('omits the combined projection when a comparable market assumption is unavailable', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
