@@ -25,10 +25,11 @@ export interface ReturnProjection {
   trendDays: number; trendReturnPercent: number; overnightRatePercent: number;
 }
 export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[]; projected?: ReturnProjection }
-export interface BenchmarkHistory {
+export interface BenchmarkHistorySeries {
   lookback: Record<BackwardPeriod, BenchmarkSeries>;
   forward: Record<ForwardPeriod, BenchmarkSeries>;
 }
+export interface BenchmarkHistory { gross: BenchmarkHistorySeries; cgt: BenchmarkHistorySeries; reynders: BenchmarkHistorySeries }
 export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string }
 export interface LedgerEntry {
   date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;

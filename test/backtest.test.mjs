@@ -402,6 +402,24 @@ test('builds a forward annualized CSH2 return at the start of the measured perio
   assert.ok(series[0].value > 9 && series[0].value < 11);
 });
 
+test('can show annualized CSH2 returns after transaction and gain taxes', () => {
+  const gross = buildForwardAnnualizedCsh2ReturnSeries({
+    '2026-01-01': 100,
+    '2027-01-01': 110
+  }, '2026-01-01', '2027-01-01');
+  const afterTax = buildForwardAnnualizedCsh2ReturnSeries({
+    '2026-01-01': 100,
+    '2027-01-01': 110
+  }, '2026-01-01', '2027-01-01', { afterTax: true });
+  const afterReyndersTax = buildForwardAnnualizedCsh2ReturnSeries({
+    '2026-01-01': 100,
+    '2027-01-01': 110
+  }, '2026-01-01', '2027-01-01', { afterTax: true, applyReyndersTax: true });
+
+  assert.ok(afterTax[0].value < gross[0].value);
+  assert.ok(afterReyndersTax[0].value < afterTax[0].value);
+});
+
 test('keeps all available annualized CSH2 points when no backtest start date is supplied', () => {
   const prices = {
     '2025-01-01': 100,
@@ -443,6 +461,16 @@ test('builds a forward annualized overnight benchmark return at the start of the
   assert.equal(series.length, 1);
   assert.equal(series[0].date, '2025-01-01');
   assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+});
+
+test('leaves the overnight benchmark unchanged in after-tax comparisons', () => {
+  const rates = {
+    '2025-01-01': 3,
+    '2026-01-01': 3
+  };
+  const gross = buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, '2025-01-01', '2026-01-01');
+  const afterTax = buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, '2025-01-01', '2026-01-01', { afterTax: true });
+  assert.deepEqual(afterTax, gross);
 });
 
 test('carries an overnight rate across calendar gaps before annualizing it', () => {

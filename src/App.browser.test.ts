@@ -11,6 +11,8 @@ describe('CSH2 application inputs', () => {
   it('loads defaults, adds flows, and restores the documented example', async () => {
     render(App);
     await expect.element(page.getByRole('heading', { name: 'CSH2 backtester' })).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'Backward annualized returns · 1Y' })).toBeVisible();
+    await expect.element(page.getByLabelText('Backward annualized CSH2 return compared with the Euro overnight benchmark over 1 year')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeDisabled();
     await page.getByRole('button', { name: 'Add cash flow' }).click();
     await expect.element(page.getByLabelText('Date')).toHaveLength(2);
@@ -28,7 +30,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(interest).toBeChecked();
     expect(localStorage.getItem('csh2-belgium-flows-v1')).toContain('"interestPayment":true');
 
-    await page.getByLabelText('Direction').selectOptions('outflow');
+    await page.getByRole('combobox', { name: /Direction/ }).selectOptions('outflow');
     await expect.element(interest).not.toBeChecked();
     await expect.element(interest).toBeDisabled();
   });
@@ -81,6 +83,12 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' }).click();
     await page.getByRole('button', { name: 'Backward' }).click();
     await expect.element(page.getByRole('group', { name: 'Backward comparison period' }).getByRole('button', { name: '3M' })).toHaveAttribute('aria-pressed', 'true');
+    const taxTreatment = page.getByRole('group', { name: 'Tax treatment' });
+    await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'true');
+    await taxTreatment.getByRole('button', { name: 'After tax' }).click();
+    await expect.element(page.getByText(/ignoring the annual CGT exemption/)).toBeVisible();
+    await expect.element(page.getByText(/The euro overnight benchmark is unchanged/)).toBeVisible();
+    await expect.element(taxTreatment.getByRole('button', { name: 'After tax' })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: 'Forward' }).click();
     await expect.element(page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
   });

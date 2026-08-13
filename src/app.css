@@ -120,12 +120,14 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .chart-key-account::before { background: #3867a8; }
 .chart-key-projected::before { width: 14px !important; height: 0 !important; border-top: 2px dashed #64766d; border-radius: 0 !important; background: transparent; }
 .projection-explanation { margin-bottom: 10px; }
-.benchmark-control { display: grid; width: min(100%, 294px); gap: 8px; }
-.benchmark-mode-picker, .benchmark-period-picker { display: flex; width: 100%; overflow-x: auto; border: 1px solid #cbd7d0; border-radius: 7px; background: #fff; }
-.benchmark-mode-picker button, .benchmark-period-picker button { flex: 1 0 46px; min-height: 38px; border: 0; border-radius: 0; padding: 0 11px; background: transparent; color: #39574b; font-size: .8rem; }
-.benchmark-mode-picker button + button, .benchmark-period-picker button + button { border-left: 1px solid #cbd7d0; }
-.benchmark-mode-picker button:hover, .benchmark-period-picker button:hover { background: #f1f5f2; }
-.benchmark-mode-picker button[aria-pressed="true"], .benchmark-period-picker button[aria-pressed="true"] { background: #1d4f3e; color: #fff; }
+.benchmark-control { display: flex; align-items: stretch; justify-content: flex-end; gap: 8px; }
+.benchmark-mode-picker, .benchmark-period-picker, .benchmark-tax-picker { display: flex; overflow-x: auto; border: 1px solid #cbd7d0; border-radius: 7px; background: #fff; }
+.benchmark-mode-picker button, .benchmark-period-picker button, .benchmark-tax-picker button { flex: 1 0 46px; min-height: 38px; border: 0; border-radius: 0; padding: 0 11px; background: transparent; color: #39574b; font-size: .8rem; }
+.benchmark-mode-picker button + button, .benchmark-period-picker button + button, .benchmark-tax-picker button + button { border-left: 1px solid #cbd7d0; }
+.benchmark-mode-picker button:hover, .benchmark-period-picker button:hover, .benchmark-tax-picker button:hover { background: #f1f5f2; }
+.benchmark-mode-picker button[aria-pressed="true"], .benchmark-period-picker button[aria-pressed="true"], .benchmark-tax-picker button[aria-pressed="true"] { background: #1d4f3e; color: #fff; }
+.benchmark-explanation + .tax-explanation { margin-top: 4px; }
+.tax-explanation { margin-bottom: 10px; }
 .rate-grid { stroke: #dfe7e1; stroke-width: 1; }
 .rate-axis-line { stroke: #aebfb6; stroke-width: 1; }
 .rate-axis { fill: #647a71; font-size: 12px; }
@@ -163,6 +165,7 @@ th { color: #60756d; font-size: .68rem; letter-spacing: .08em; text-transform: u
   .flow-row .interest-payment { grid-column: auto; }
   .metric-row-values, .metric-row-details { grid-template-columns: 1fr; }
   .source { text-align: left; }
+  .benchmark-control { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
   .timestamp-tooltip { right: auto; left: 0; }
   .timestamp-tooltip::after { right: auto; left: 12px; }
   #results { margin-top: 32px; }

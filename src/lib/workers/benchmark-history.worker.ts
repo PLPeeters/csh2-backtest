@@ -5,21 +5,25 @@ import type { BenchmarkHistoryRequest, BenchmarkPeriod, BenchmarkSeries } from '
 const lookbackPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825 } as const;
 const forwardPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365 } as const;
 
-type SeriesBuilder = (data: Record<string, unknown>, from: string, to: string, options: { lookbackDays: number }) => BenchmarkSeries['csh2'];
+type SeriesBuilder = (data: Record<string, unknown>, from: string, to: string, options: { lookbackDays: number; afterTax: boolean; applyReyndersTax?: boolean }) => BenchmarkSeries['csh2'];
 
-function buildSeries(periods: Record<string, number>, buildCsh2: SeriesBuilder, buildOvernight: SeriesBuilder, request: BenchmarkHistoryRequest) {
+function buildSeries(periods: Record<string, number>, buildCsh2: SeriesBuilder, buildOvernight: SeriesBuilder, request: BenchmarkHistoryRequest, afterTax: boolean, applyReyndersTax = false) {
   return Object.fromEntries(Object.entries(periods).map(([period, lookbackDays]) => [period, {
-    csh2: buildCsh2(request.prices, '', request.to, { lookbackDays }),
-    overnight: buildOvernight(request.rates, '', request.to, { lookbackDays })
+    csh2: buildCsh2(request.prices, '', request.to, { lookbackDays, afterTax, applyReyndersTax }),
+    overnight: buildOvernight(request.rates, '', request.to, { lookbackDays, afterTax })
   }])) as Record<BenchmarkPeriod, BenchmarkSeries>;
+}
+
+function buildHistory(request: BenchmarkHistoryRequest, afterTax: boolean, applyReyndersTax = false) {
+  return {
+    lookback: buildSeries(lookbackPeriods, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, request, afterTax, applyReyndersTax),
+    forward: buildSeries(forwardPeriods, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, request, afterTax, applyReyndersTax)
+  };
 }
 
 self.onmessage = ({ data }: MessageEvent<BenchmarkHistoryRequest>) => {
   try {
-    self.postMessage({ ok: true, history: {
-      lookback: buildSeries(lookbackPeriods, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, data),
-      forward: buildSeries(forwardPeriods, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, data)
-    } });
+    self.postMessage({ ok: true, history: { gross: buildHistory(data, false), cgt: buildHistory(data, true), reynders: buildHistory(data, true, true) } });
   } catch (error) {
     self.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) });
   }

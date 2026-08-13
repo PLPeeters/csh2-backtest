@@ -1,4 +1,4 @@
-import { daysBetween } from './shared.mjs';
+import { CGT_EXEMPTION_START_YEAR, CGT_RATE, daysBetween, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 import { isUsableClose, priceValue } from './quotes.mjs';
 import { runBacktest } from './simulation.mjs';
 
@@ -43,7 +43,11 @@ export function buildAccountReturnSeries(flows, valuationDate, { unpaidAccruedIn
   return snapshots;
 }
 
-function trailingAnnualizedReturnSeries(points, from, lookbackDays) {
+function priceRatio(from, to) {
+  return to.value / from.value;
+}
+
+function trailingAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio) {
   let priorIndex = 0;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
@@ -51,11 +55,11 @@ function trailingAnnualizedReturnSeries(points, from, lookbackDays) {
     const prior = points[priorIndex];
     if (priorIndex >= index || daysBetween(prior.date, point.date) < lookbackDays) return undefined;
     const days = daysBetween(prior.date, point.date);
-    return { date: point.date, value: ((point.value / prior.value) ** (365 / days) - 1) * 100 };
+    return { date: point.date, value: (periodRatio(prior, point) ** (365 / days) - 1) * 100 };
   }).filter(Boolean);
 }
 
-function forwardAnnualizedReturnSeries(points, from, lookbackDays) {
+function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio) {
   let futureIndex = 1;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
@@ -64,24 +68,43 @@ function forwardAnnualizedReturnSeries(points, from, lookbackDays) {
     const future = points[futureIndex];
     if (!future) return undefined;
     const days = daysBetween(point.date, future.date);
-    return { date: point.date, value: ((future.value / point.value) ** (365 / days) - 1) * 100 };
+    return { date: point.date, value: (periodRatio(point, future) ** (365 / days) - 1) * 100 };
   }).filter(Boolean);
 }
 
-export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90 } = {}) {
-  const points = Object.entries(prices)
-    .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
-    .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
-    .sort((left, right) => left.date.localeCompare(right.date));
-  return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+function csh2AfterTaxRatio(prices, applyReyndersTax) {
+  const yearEnd2025Price = Object.entries(prices)
+    .filter(([date, record]) => date <= '2025-12-31' && !record?.isFallback && isUsableClose(record))
+    .sort(([left], [right]) => right.localeCompare(left))[0];
+  return (purchase, sale) => {
+    const units = (1 - TOB_RATE) / purchase.value;
+    const gross = units * sale.value;
+    const saleYear = Number(sale.date.slice(0, 4));
+    const taxBasis = !applyReyndersTax && saleYear >= CGT_EXEMPTION_START_YEAR && purchase.date < `${CGT_EXEMPTION_START_YEAR}-01-01` && yearEnd2025Price
+      ? Math.max(purchase.value, priceValue(yearEnd2025Price[1], 'close'))
+      : purchase.value;
+    const taxableGain = Math.max(0, (sale.value - taxBasis) * units);
+    const gainTax = applyReyndersTax
+      ? taxableGain * REYNDERS_TAX_RATE
+      : saleYear >= CGT_EXEMPTION_START_YEAR ? taxableGain * CGT_RATE : 0;
+    return gross - (gross * TOB_RATE) - gainTax;
+  };
 }
 
-export function buildForwardAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 365 } = {}) {
+export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90, afterTax = false, applyReyndersTax = false } = {}) {
   const points = Object.entries(prices)
     .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
     .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
     .sort((left, right) => left.date.localeCompare(right.date));
-  return forwardAnnualizedReturnSeries(points, from, lookbackDays);
+  return trailingAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, applyReyndersTax) : priceRatio);
+}
+
+export function buildForwardAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 365, afterTax = false, applyReyndersTax = false } = {}) {
+  const points = Object.entries(prices)
+    .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
+    .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+  return forwardAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, applyReyndersTax) : priceRatio);
 }
 
 export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 90 } = {}) {

@@ -1,5 +1,6 @@
 import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
 import { blankFlow, clearStoredState, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
+import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
 export interface BacktestDependencies {
   storage: Storage;
@@ -42,14 +43,31 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   let direction = $state<BenchmarkDirection>('backward');
   let backwardPeriod = $state<BackwardPeriod>('1y');
   let forwardPeriod = $state<ForwardPeriod>('1y');
+  let benchmarkAfterTax = $state(false);
   let submittedInputSignature = $state<string>();
   let requestGeneration = 0;
+  let benchmarkRequestGeneration = 0;
 
   const persist = () => { saveFlows(dependencies.storage, flows); saveSettings(dependencies.storage, settings); };
+  const prepareBenchmark = async (market: MarketDataBundle, requestedTo?: string) => {
+    const generation = ++benchmarkRequestGeneration;
+    benchmarkStatus = { kind: 'loading', message: 'Preparing benchmark history…' };
+    try {
+      const to = requestedTo ?? latestAvailablePriceDate(market.data.prices, dependencies.today());
+      if (!to) throw new Error('The published CSH2 price data contains no closing prices.');
+      const history = await dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to });
+      if (generation !== benchmarkRequestGeneration) return;
+      benchmark = history;
+      benchmarkStatus = { kind: 'success', message: '' };
+    } catch (error) {
+      if (generation !== benchmarkRequestGeneration) return;
+      benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' };
+    }
+  };
   return {
     get flows() { return flows; }, get settings() { return settings; }, get status() { return status; }, get view() { return view; },
     get benchmark() { return benchmark; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
-    get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; },
+    get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; }, get benchmarkAfterTax() { return benchmarkAfterTax; },
     get resultIsStale() { return !!view && submittedInputSignature !== calculationInputSignature(flows, settings); },
     get valid() { return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && interestSettingsAreValid(settings); },
     addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
@@ -59,9 +77,15 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     updateInterestPayment(id: string, value: boolean) { const flow = flows.find((item) => item.id === id); if (flow?.type === 'inflow') { flow.interestPayment = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
     loadExample() { flows = [{ id: crypto.randomUUID(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: crypto.randomUUID(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: crypto.randomUUID(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
-    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; benchmark = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
+    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },
+    setBenchmarkAfterTax(value: boolean) { benchmarkAfterTax = value; },
+    async loadBenchmark() {
+      benchmarkStatus = { kind: 'loading', message: 'Loading benchmark market data…' };
+      try { await prepareBenchmark(await dependencies.loadMarketData()); }
+      catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
+    },
     async calculate() {
       const generation = ++requestGeneration;
       const submittedFlows = cloneFlows(flows);
@@ -76,11 +100,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         view = nextView;
         submittedInputSignature = nextSubmittedInputSignature;
         status = { kind: 'success', message: `Calculated using the ${nextView.result.valuation.date} close.` };
-        benchmarkStatus = { kind: 'loading', message: 'Preparing benchmark history…' };
-        dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to: nextView.to }).then((history) => {
-          if (generation !== requestGeneration) return;
-          benchmark = history; benchmarkStatus = { kind: 'success', message: '' };
-        }).catch(() => { if (generation === requestGeneration) benchmarkStatus = { kind: 'error', message: 'Benchmark history could not be prepared.' }; });
+        if (!benchmark && benchmarkStatus.kind !== 'loading') void prepareBenchmark(market, nextView.to);
       } catch (error) {
         if (generation !== requestGeneration) return;
         view = undefined;
