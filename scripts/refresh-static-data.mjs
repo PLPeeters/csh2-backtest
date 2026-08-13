@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchWithBackoff } from './fetch-with-backoff.mjs';
 import { parseRefreshMode } from './refresh-data-mode.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -11,7 +12,7 @@ const benchmarkPath = resolve(root, 'src/assets/data/overnight-rates.json');
 const legacyRatePath = resolve(root, 'src/assets/data/estr-rates.json');
 const historicalStart = '2015-03-13';
 const estrCorrectionWindowDays = 7;
-const ecbRetryDelaysMilliseconds = [10_000, 20_000, 40_000, 80_000];
+const marketDataRetryDelaysMilliseconds = [10_000, 20_000, 40_000, 80_000];
 const today = new Date().toISOString().slice(0, 10);
 const benchmarkSegments = [
   { id: 'eonia', label: 'EONIA', start: '2015-03-13', end: '2018-08-31', series: 'EON/D.EONIA_TO.RATE' },
@@ -68,15 +69,16 @@ function sameRecords(left, right) {
 function countChangedRecords(previous, current) {
   return Object.keys(current).filter((date) => previous[date] !== current[date]).length;
 }
-function wait(milliseconds) {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
-}
 async function fetchDailyPrices(startDate) {
   const start = Math.floor(new Date(`${startDate}T00:00:00Z`).getTime() / 1000);
   const end = Math.floor(new Date(`${today}T23:59:59Z`).getTime() / 1000);
   const url = new URL('https://query1.finance.yahoo.com/v8/finance/chart/CSH2.PA');
   url.search = new URLSearchParams({ period1: String(start), period2: String(end), interval: '1d', events: 'history' });
-  const response = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'CSH2-Belgium-Backtester/1.0' } });
+  const response = await fetchWithBackoff(url, { headers: { Accept: 'application/json', 'User-Agent': 'CSH2-Belgium-Backtester/1.0' } }, {
+    retryStatuses: [429, 500, 502, 503, 504],
+    retryDelaysMilliseconds: marketDataRetryDelaysMilliseconds,
+    onRetry: ({ delay }) => console.warn(`Yahoo Finance returned HTTP 429; retrying in ${delay / 1_000} seconds.`)
+  });
   if (!response.ok) throw new Error(`Yahoo Finance returned HTTP ${response.status}.`);
   const result = (await response.json()).chart?.result?.[0];
   const quote = result?.indicators?.quote?.[0];
@@ -87,24 +89,17 @@ async function fetchDailyPrices(startDate) {
 async function fetchRates(segment, startDate, endDate) {
   const url = new URL(`https://data-api.ecb.europa.eu/service/data/${segment.series}`);
   url.search = new URLSearchParams({ startPeriod: startDate, endPeriod: endDate, format: 'csvdata' });
-  let lastError;
-  for (let attempt = 0; attempt <= ecbRetryDelaysMilliseconds.length; attempt += 1) {
-    try {
-      const response = await fetch(url, { headers: { Accept: 'text/csv' }, signal: AbortSignal.timeout(30_000) });
-      if (response.ok) return parseRates(await response.text(), segment.label);
-      const error = new Error(`ECB returned HTTP ${response.status} for ${segment.label}.`);
-      if (![429, 500, 502, 503, 504].includes(response.status)) throw error;
-      lastError = error;
-    } catch (error) {
-      if (!(error instanceof TypeError) && error?.name !== 'TimeoutError' && !/^ECB returned HTTP (429|500|502|503|504) /.test(error.message)) throw error;
-      lastError = error;
+  const response = await fetchWithBackoff(url, () => ({ headers: { Accept: 'text/csv' }, signal: AbortSignal.timeout(30_000) }), {
+    retryStatuses: [429, 500, 502, 503, 504],
+    retryDelaysMilliseconds: marketDataRetryDelaysMilliseconds,
+    retryError: (error) => error instanceof TypeError || error?.name === 'TimeoutError',
+    onRetry: ({ delay, error, response: failedResponse }) => {
+      const reason = error?.message ?? `HTTP ${failedResponse.status}`;
+      console.warn(`ECB ${segment.label} request failed (${reason}); retrying in ${delay / 1_000} seconds.`);
     }
-    const delay = ecbRetryDelaysMilliseconds[attempt];
-    if (delay === undefined) throw lastError;
-    console.warn(`ECB ${segment.label} request failed (${lastError.message}); retrying in ${delay / 1_000} seconds.`);
-    await wait(delay);
-  }
-  throw lastError;
+  });
+  if (!response.ok) throw new Error(`ECB returned HTTP ${response.status} for ${segment.label}.`);
+  return parseRates(await response.text(), segment.label);
 }
 function parseRates(text, label) {
   const [header, ...rows] = text.trim().split(/\r?\n/);
