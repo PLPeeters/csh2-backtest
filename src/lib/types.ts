@@ -5,7 +5,7 @@ export type BackwardPeriod = '1m' | '3m' | '6m' | '1y' | '2y' | '5y';
 export type ForwardPeriod = '1m' | '3m' | '6m' | '1y';
 export type BenchmarkPeriod = BackwardPeriod | ForwardPeriod;
 
-export interface CashFlowDraft { id: string; date: string; type: CashFlowType; amount: string }
+export interface CashFlowDraft { id: string; date: string; type: CashFlowType; amount: string; interestPayment: boolean }
 export interface CalculationSettings {
   applyCapitalGainsExemption: boolean;
   applyReyndersTax: boolean;
@@ -28,7 +28,7 @@ export interface BenchmarkHistory {
 }
 export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string }
 export interface LedgerEntry {
-  date: string; type: CashFlowType; amount: number; price: number; priceKind: string; units: number;
+  date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;
   remainingCash: number; brokerFee: number; tob: number; cgt: number; reyndersTax: number; exoneratedCgt: number;
 }
 export interface BreakEvenEstimate { date: string; trendDays: number; trendReturnPercent: number }

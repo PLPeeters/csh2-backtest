@@ -18,7 +18,7 @@ function cloneSettings(settings: CalculationSettings) {
 }
 
 function calculationInputSignature(flows: CashFlowDraft[], settings: CalculationSettings) {
-  return JSON.stringify({ flows: flows.map(({ date, type, amount }) => ({ date, type, amount })), settings });
+  return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings });
 }
 
 export function createBacktestController(dependencies: BacktestDependencies) {
@@ -45,9 +45,10 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
     removeFlow(id: string) { flows = flows.filter((flow) => flow.id !== id); if (!flows.length) flows = [blankFlow()]; persist(); },
     replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },
-    updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') flow.type = value; persist(); } },
+    updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') { flow.type = value; if (value === 'outflow') flow.interestPayment = false; } persist(); } },
+    updateInterestPayment(id: string, value: boolean) { const flow = flows.find((item) => item.id === id); if (flow?.type === 'inflow') { flow.interestPayment = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
-    loadExample() { flows = [{ id: crypto.randomUUID(), date: '2025-04-01', type: 'inflow', amount: '5000' }, { id: crypto.randomUUID(), date: '2025-10-01', type: 'inflow', amount: '750' }, { id: crypto.randomUUID(), date: '2026-04-01', type: 'outflow', amount: '600' }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
+    loadExample() { flows = [{ id: crypto.randomUUID(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: crypto.randomUUID(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: crypto.randomUUID(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
     clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; benchmark = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },

@@ -16,6 +16,11 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
   const exemption = createCapitalGainsExemption(applyCapitalGainsExemption && !applyReyndersTax);
   for (const flow of [...flows].sort((left, right) => left.date.localeCompare(right.date))) {
     if (!['inflow', 'outflow'].includes(flow.type) || !Number.isFinite(flow.amount) || flow.amount <= 0) throw new Error('Every cash flow needs a positive amount and a valid type.');
+    if (flow.interestPayment && flow.type !== 'inflow') throw new Error('Only an inflow can be marked as an interest payment.');
+    if (flow.interestPayment) {
+      entries.push({ ...flow, units: 0, tob: 0, brokerFee: 0, cgt: 0, reyndersTax: 0, exoneratedCgt: 0, net: 0, remainingCash: euro(availableCash) });
+      continue;
+    }
     const quote = quoteForTransaction(prices, flow.date);
     if (flow.type === 'inflow') {
       if (buyWholeSharesOnly) availableCash += flow.amount;

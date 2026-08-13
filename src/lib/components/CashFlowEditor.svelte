@@ -35,7 +35,7 @@
   function importRows() {
     const mapped = mapImportedRows(csvRows, { dateColumn, amountColumn, dateFormat });
     if (!mapped.flows.length) return;
-    const imported = mapped.flows.map((flow: { date: string; type: CashFlowType; amount: number }) => ({ ...flow, id: crypto.randomUUID(), amount: String(flow.amount) }));
+    const imported = mapped.flows.map((flow: { date: string; type: CashFlowType; amount: number }) => ({ ...flow, id: crypto.randomUUID(), amount: String(flow.amount), interestPayment: false }));
     const untouched = controller.flows.length === 1 && !controller.flows[0].date && !controller.flows[0].amount;
     controller.replaceFlows(untouched ? imported : ([...controller.flows, ...imported] as CashFlowDraft[]).toSorted((a, b) => a.date.localeCompare(b.date)));
     resetCsv();
@@ -64,13 +64,14 @@
 </section>
 <section class="input-section cash-flow-section" aria-label="Cash-flow entries">
   <div class="controls clear-data-controls"><button class="quiet" type="button" onclick={() => { if (confirm('Clear all saved cash flows, settings, pending CSV data, and results? This cannot be undone.')) { resetCsv(); controller.clear(); } }}>Clear all data</button></div>
-  <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span></span></div>
+  <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span>Interest</span><span></span></div>
   <div aria-live="polite">
     {#each controller.flows as flow (flow.id)}
       <div class="flow-row">
         <label><span class="sr-only">Date</span><input type="date" required value={flow.date} onchange={(event) => controller.updateFlow(flow.id, 'date', event.currentTarget.value)} /></label>
         <label><span class="sr-only">Direction</span><select value={flow.type} onchange={(event) => controller.updateFlow(flow.id, 'type', event.currentTarget.value)}><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label>
         <label><span class="sr-only">Net amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={flow.amount} onchange={(event) => controller.updateFlow(flow.id, 'amount', event.currentTarget.value)} /></label>
+        <label class="interest-payment"><input type="checkbox" checked={flow.interestPayment} disabled={flow.type !== 'inflow'} onchange={(event) => controller.updateInterestPayment(flow.id, event.currentTarget.checked)} /><span class="sr-only">Interest payment</span></label>
         <button class="delete-button" type="button" aria-label="Remove cash flow" onclick={() => controller.removeFlow(flow.id)}>×</button>
       </div>
     {/each}

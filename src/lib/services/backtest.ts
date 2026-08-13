@@ -13,10 +13,13 @@ function options(settings: CalculationSettings) {
 }
 
 export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView {
-  const normalized = flows.map(({ date, type, amount }) => ({ date, type, amount: Number(amount) }));
+  const normalized = flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount: Number(amount), interestPayment }));
   if (!normalized.length || normalized.some((flow) => !flow.date || !Number.isFinite(flow.amount) || flow.amount <= 0)) {
     throw new Error('Add a date and a positive EUR amount to every cash flow.');
   }
+  const investedFlows = normalized.filter((flow) => !flow.interestPayment);
+  const firstInvestment = investedFlows.filter((flow) => flow.type === 'inflow').toSorted((left, right) => left.date.localeCompare(right.date))[0];
+  if (!firstInvestment) throw new Error('Add at least one inflow that is not an interest payment.');
   const valuationDate = latestAvailablePriceDate(market.data.prices, today);
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
   const calculationOptions = options(settings);
@@ -29,11 +32,11 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
     result,
     metadata: market.data,
     settings: { ...settings },
-    from: [...normalized].sort((left, right) => left.date.localeCompare(right.date))[0].date,
+    from: firstInvestment.date,
     to: valuationDate,
     returnSeries: {
       csh2: buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions),
-      overnight: buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, normalized[0].date, valuationDate, calculationOptions)
+      overnight: buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions)
     }
   };
 }

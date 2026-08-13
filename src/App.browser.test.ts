@@ -19,6 +19,20 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeEnabled();
   });
 
+  it('marks inflows as interest payments and clears the marker for outflows', async () => {
+    render(App);
+    await page.getByLabelText('Date').fill('2026-01-02');
+    await page.getByLabelText('Net amount in euro').fill('50');
+    const interest = page.getByRole('checkbox', { name: 'Interest payment' });
+    await interest.click();
+    await expect.element(interest).toBeChecked();
+    expect(localStorage.getItem('csh2-belgium-flows-v1')).toContain('"interestPayment":true');
+
+    await page.getByLabelText('Direction').selectOptions('outflow');
+    await expect.element(interest).not.toBeChecked();
+    await expect.element(interest).toBeDisabled();
+  });
+
   it('recovers malformed storage and preserves the CGT preference while Reynders Tax is active', async () => {
     localStorage.setItem('csh2-belgium-flows-v1', '{broken');
     render(App);

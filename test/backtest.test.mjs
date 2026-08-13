@@ -79,6 +79,29 @@ test('reports missed earnings against net inputs and unpaid accrued interest', (
   assert.equal(result.missedSharePercent.toFixed(6), '12.514722');
 });
 
+test('counts paid interest in the actual balance without investing it in CSH2', () => {
+  const result = runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true }
+  ], prices, '2026-03-02');
+  const withoutInterest = runBacktest([{ date: '2026-01-02', type: 'inflow', amount: 1000 }], prices, '2026-03-02');
+
+  assert.equal(result.units, withoutInterest.units);
+  assert.equal(result.netLiquidationValue, withoutInterest.netLiquidationValue);
+  assert.equal(result.totalInput, 1050);
+  assert.equal(result.missedAmount, 127.15);
+  assert.equal(result.entries[1].interestPayment, true);
+  assert.equal(result.entries[1].units, 0);
+  assert.equal(result.entries[1].price, undefined);
+});
+
+test('rejects marking an outflow as an interest payment', () => {
+  assert.throws(() => runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'outflow', amount: 50, interestPayment: true }
+  ], prices, '2026-03-02'), /Only an inflow/);
+});
+
 test('compares moving now with waiting for a future interest payout using the recent CSH2 trend', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   const assessment = assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 50);
@@ -262,6 +285,15 @@ test('builds a net-return snapshot for each available price date after investing
   assert.ok(series.at(-1).value > series[0].value);
 });
 
+test('excludes paid interest from the CSH2 return-series capital base', () => {
+  const withInterest = buildBacktestReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true }
+  ], prices);
+  const withoutInterest = buildBacktestReturnSeries([{ date: '2026-01-02', type: 'inflow', amount: 1000 }], prices);
+  assert.deepEqual(withInterest, withoutInterest);
+});
+
 test('uses pre-flow CSH2 price history to provide a trailing annualized return from the first flow date', () => {
   const series = buildTrailingAnnualizedCsh2ReturnSeries({
     '2025-10-01': 100,
@@ -372,6 +404,18 @@ test('excludes whole-share residual cash from the overnight benchmark portfolio'
   assert.equal(series.at(-1).date, '2026-03-02');
   assert.ok(series.at(-1).value > 0);
   assert.ok(series.at(-1).value < 0.1);
+});
+
+test('does not add paid interest to the overnight benchmark portfolio', () => {
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const withInterest = buildOvernightBenchmarkReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true }
+  ], prices, rates, '2026-03-02', '2026-01-02', '2026-03-02');
+  const withoutInterest = buildOvernightBenchmarkReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 }
+  ], prices, rates, '2026-03-02', '2026-01-02', '2026-03-02');
+  assert.deepEqual(withInterest, withoutInterest);
 });
 
 test('does not create an overnight benchmark position from uninvested whole-share cash', () => {

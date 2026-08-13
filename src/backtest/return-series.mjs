@@ -8,7 +8,7 @@ export function buildBacktestReturnSeries(flows, prices, options) {
   const snapshots = [];
   for (const date of dates) {
     const completedFlows = flows.filter((flow) => flow.date <= date);
-    const inflows = completedFlows.filter((flow) => flow.type === 'inflow').reduce((sum, flow) => sum + flow.amount, 0);
+    const inflows = completedFlows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
     if (!inflows) continue;
     const outflows = completedFlows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
     const result = runBacktest(completedFlows, prices, date, options);
@@ -93,7 +93,7 @@ export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from
 function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options) {
   const { entries } = runBacktest(flows, prices, valuationDate, options);
   let priorCash = 0;
-  return entries.map((entry) => {
+  return entries.filter((entry) => !entry.interestPayment).map((entry) => {
     const cashChange = entry.remainingCash - priorCash;
     priorCash = entry.remainingCash;
     return {

@@ -14,7 +14,7 @@ export const defaultSettings = (): CalculationSettings => ({
   brokerTransactionFee: '0'
 });
 
-export const blankFlow = (): CashFlowDraft => ({ id: crypto.randomUUID(), date: '', type: 'inflow', amount: '' });
+export const blankFlow = (): CashFlowDraft => ({ id: crypto.randomUUID(), date: '', type: 'inflow', amount: '', interestPayment: false });
 
 function isFlow(value: unknown): value is Omit<CashFlowDraft, 'id'> & { id?: string } {
   if (!value || typeof value !== 'object') return false;
@@ -32,7 +32,7 @@ function readJson(storage: Storage, key: string): unknown {
 export function loadStoredState(storage: Storage): StoredState {
   const flowValue = readJson(storage, flowStorageKey);
   const flows = Array.isArray(flowValue) && flowValue.every(isFlow)
-    ? flowValue.map((flow) => ({ id: flow.id ?? crypto.randomUUID(), date: flow.date, type: flow.type, amount: String(flow.amount) }))
+    ? flowValue.map((flow) => ({ id: flow.id ?? crypto.randomUUID(), date: flow.date, type: flow.type, amount: String(flow.amount), interestPayment: flow.type === 'inflow' && flow.interestPayment === true }))
     : [blankFlow()];
   if (!Array.isArray(flowValue) && flowValue !== undefined) storage.removeItem(flowStorageKey);
   const defaults = defaultSettings();
@@ -53,7 +53,7 @@ export function loadStoredState(storage: Storage): StoredState {
 }
 
 export function saveFlows(storage: Storage, flows: CashFlowDraft[]) {
-  storage.setItem(flowStorageKey, JSON.stringify(flows.map(({ date, type, amount }) => ({ date, type, amount }))));
+  storage.setItem(flowStorageKey, JSON.stringify(flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment }))));
 }
 
 export function saveSettings(storage: Storage, settings: CalculationSettings) {
