@@ -49,6 +49,11 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Load example' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+    const csh2Update = page.getByText(/^CSH2 data last updated/);
+    const estrUpdate = page.getByText(/^€STR data last updated/);
+    await expect.element(csh2Update).toHaveTextContent(/ago$/);
+    await expect.element(estrUpdate).toHaveTextContent(/ago$/);
+    await expect.element(page.getByRole('tooltip')).toHaveLength(2);
     await page.getByRole('group', { name: 'Backward comparison period' }).getByRole('button', { name: '3M' }).click();
     await page.getByRole('button', { name: 'Forward' }).click();
     await page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' }).click();
@@ -105,7 +110,7 @@ describe('CSH2 application inputs', () => {
       loadMarketData: () => marketPromise,
       calculate: (_flows, settings) => {
         calculatedSettings = { ...settings };
-        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, returnSeries: { csh2: [], overnight: [] }, from: '2026-08-08', to: '2026-08-08' } as unknown as CalculationView;
+        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, rateMetadata: market.rateData, returnSeries: { csh2: [], overnight: [] }, from: '2026-08-08', to: '2026-08-08' } as unknown as CalculationView;
       },
       prepareBenchmark: async () => ({}) as never
     });

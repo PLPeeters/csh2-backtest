@@ -34,6 +34,7 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   return {
     result,
     metadata: market.data,
+    rateMetadata: market.rateData,
     settings: { ...settings },
     from: firstInvestment.date,
     to: valuationDate,

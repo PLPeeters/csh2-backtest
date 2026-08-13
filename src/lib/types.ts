@@ -49,7 +49,7 @@ export interface BacktestResult {
   interestPayoutAssessment?: InterestPayoutAssessment;
 }
 export interface CalculationView {
-  result: BacktestResult; metadata: PriceEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;
+  result: BacktestResult; metadata: PriceEnvelope; rateMetadata: RateEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;
 }
 export type StatusState = { kind: 'idle' | 'loading' | 'success' | 'error'; message: string };
 export interface StoredState { flows: CashFlowDraft[]; settings: CalculationSettings }

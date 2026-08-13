@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { BacktestController } from '../state/backtest.svelte';
-  import { date, duration, euro, number, percent, updatedAt } from '../services/formatters';
+  import { date, duration, euro, number, percent, relativeUpdatedAt, updatedAt } from '../services/formatters';
   import LineChart from './LineChart.svelte';
   let { controller }: { controller: BacktestController } = $props();
   const periods = { '1m': { label: '1M', description: '1 month' }, '3m': { label: '3M', description: '3 months' }, '6m': { label: '6M', description: '6 months' }, '1y': { label: '1Y', description: '1 year' }, '2y': { label: '2Y', description: '2 years' }, '5y': { label: '5Y', description: '5 years' } } as const;
@@ -11,8 +11,10 @@
   {@const result = controller.view.result}
   {@const settings = controller.view.settings}
   {@const negative = result.missedAmount < 0}
+  {@const csh2UpdatedAt = new Date(controller.view.metadata.cachedAt)}
+  {@const estrUpdatedAt = controller.view.rateMetadata.cachedAt ? new Date(controller.view.rateMetadata.cachedAt) : undefined}
   <section id="results" aria-live="polite">
-    <div class="result-heading"><div><p class="eyebrow">As of {result.valuation.date}</p><h2>Backtest result</h2></div><p class="source">Data last updated {updatedAt.format(new Date(controller.view.metadata.cachedAt))}</p></div>
+    <div class="result-heading"><div><p class="eyebrow">As of {result.valuation.date}</p><h2>Backtest result</h2></div><p class="source"><span class="timestamp-wrapper"><button type="button" class="timestamp" aria-describedby="csh2-update-tooltip">CSH2 data last updated {relativeUpdatedAt(csh2UpdatedAt)}</button><span id="csh2-update-tooltip" class="timestamp-tooltip" role="tooltip">{updatedAt.format(csh2UpdatedAt)}</span></span><br />{#if estrUpdatedAt}<span class="timestamp-wrapper"><button type="button" class="timestamp" aria-describedby="estr-update-tooltip">€STR data last updated {relativeUpdatedAt(estrUpdatedAt)}</button><span id="estr-update-tooltip" class="timestamp-tooltip" role="tooltip">{updatedAt.format(estrUpdatedAt)}</span></span>{:else}<span>€STR data last updated unavailable</span>{/if}</p></div>
     <div class="metrics">
       <article class:negative class="metric main missed-result"><p>{negative ? 'CSH2 would currently be below your account balance by' : 'You missed out on'}</p><strong>{euro.format(Math.abs(result.missedAmount))}</strong><small>{result.missedSharePercent === undefined ? 'Your account balance is zero.' : negative ? `a shortfall equal to ${percent(Math.abs(result.missedSharePercent))}% of your account balance, including interest` : `which is ${percent(result.missedSharePercent)}% of your account balance, including interest`}</small>
         {#if negative && result.breakEvenEstimate}<small>Estimated break-even in <b>{duration(result.valuation.date, result.breakEvenEstimate.date)}</b></small><small>(assuming the CSH2 price keeps its {result.breakEvenEstimate.trendDays}-day trend of {percent(result.breakEvenEstimate.trendReturnPercent)}%)</small>{:else if negative}<small>Break-even can’t be estimated from the recent price trend.</small>{/if}
