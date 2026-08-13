@@ -116,6 +116,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .chart-key span::before { width: 8px; height: 8px; border-radius: 50%; content: ''; }
 .chart-key-csh2::before { background: #1d6a54; }
 .chart-key-estr::before { background: #bd842b; }
+.chart-key-account::before { background: #3867a8; }
 .benchmark-control { display: grid; width: min(100%, 294px); gap: 8px; }
 .benchmark-mode-picker, .benchmark-period-picker { display: flex; width: 100%; overflow-x: auto; border: 1px solid #cbd7d0; border-radius: 7px; background: #fff; }
 .benchmark-mode-picker button, .benchmark-period-picker button { flex: 1 0 46px; min-height: 38px; border: 0; border-radius: 0; padding: 0 11px; background: transparent; color: #39574b; font-size: .8rem; }

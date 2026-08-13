@@ -17,6 +17,32 @@ export function buildBacktestReturnSeries(flows, prices, options) {
   return snapshots;
 }
 
+/** Reconstructs the actual account return from external inflows and identified interest payments. */
+export function buildAccountReturnSeries(flows, valuationDate, { unpaidAccruedInterest = 0 } = {}) {
+  const datedFlows = flows
+    .filter((flow) => flow.date <= valuationDate)
+    .toSorted((left, right) => left.date.localeCompare(right.date));
+  const snapshots = [];
+  let inflows = 0;
+  let paidInterest = 0;
+  let index = 0;
+  while (index < datedFlows.length) {
+    const date = datedFlows[index].date;
+    while (index < datedFlows.length && datedFlows[index].date === date) {
+      const flow = datedFlows[index];
+      if (flow.type === 'inflow' && flow.interestPayment) paidInterest += flow.amount;
+      else if (flow.type === 'inflow') inflows += flow.amount;
+      index += 1;
+    }
+    if (inflows) snapshots.push({ date, value: (paidInterest / inflows) * 100 });
+  }
+  if (!inflows) return [];
+  const valuationPoint = { date: valuationDate, value: ((paidInterest + unpaidAccruedInterest) / inflows) * 100 };
+  if (snapshots.at(-1)?.date === valuationDate) snapshots[snapshots.length - 1] = valuationPoint;
+  else snapshots.push(valuationPoint);
+  return snapshots;
+}
+
 function trailingAnnualizedReturnSeries(points, from, lookbackDays) {
   let priorIndex = 0;
   return points.map((point, index) => {

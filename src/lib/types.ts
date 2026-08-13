@@ -22,6 +22,7 @@ export interface RateEnvelope { source?: string; cachedAt?: string; rates: Recor
 export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; version: string }
 export interface ChartPoint { date: string; value: number }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
+export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[] }
 export interface BenchmarkHistory {
   lookback: Record<BackwardPeriod, BenchmarkSeries>;
   forward: Record<ForwardPeriod, BenchmarkSeries>;
@@ -44,7 +45,7 @@ export interface BacktestResult {
   interestPayoutAssessment?: InterestPayoutAssessment;
 }
 export interface CalculationView {
-  result: BacktestResult; metadata: PriceEnvelope; settings: CalculationSettings; returnSeries: BenchmarkSeries; from: string; to: string;
+  result: BacktestResult; metadata: PriceEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;
 }
 export type StatusState = { kind: 'idle' | 'loading' | 'success' | 'error'; message: string };
 export interface StoredState { flows: CashFlowDraft[]; settings: CalculationSettings }

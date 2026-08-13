@@ -64,7 +64,7 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
     const staleMessage = page.getByText('Inputs have changed. The results below still reflect your last calculation. Calculate again to update them.');
-    const chart = page.getByLabelText('Cumulative CSH2 backtest return compared with a euro overnight benchmark portfolio using the same cash flows');
+    const chart = page.getByLabelText('Cumulative return of your account compared with CSH2 and a euro overnight benchmark portfolio using the same external cash flows');
     const initialChart = await chart.screenshot({ base64: true, save: false });
     const exemption = page.getByRole('checkbox', { name: 'Apply the annual capital-gains exemption' });
 

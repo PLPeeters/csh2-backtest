@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessInterestPayoutTiming, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -292,6 +292,30 @@ test('excludes paid interest from the CSH2 return-series capital base', () => {
   ], prices);
   const withoutInterest = buildBacktestReturnSeries([{ date: '2026-01-02', type: 'inflow', amount: 1000 }], prices);
   assert.deepEqual(withInterest, withoutInterest);
+});
+
+test('builds the actual account return from paid and unpaid interest', () => {
+  const series = buildAccountReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true },
+    { date: '2026-02-15', type: 'outflow', amount: 400 },
+    { date: '2026-03-02', type: 'inflow', amount: 1000 }
+  ], '2026-04-02', { unpaidAccruedInterest: 25 });
+
+  assert.deepEqual(series, [
+    { date: '2026-01-02', value: 0 },
+    { date: '2026-02-02', value: 5 },
+    { date: '2026-02-15', value: 5 },
+    { date: '2026-03-02', value: 2.5 },
+    { date: '2026-04-02', value: 3.75 }
+  ]);
+});
+
+test('combines same-day account flows into one return point', () => {
+  assert.deepEqual(buildAccountReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
+    { date: '2026-01-02', type: 'inflow', amount: 25, interestPayment: true }
+  ], '2026-01-02'), [{ date: '2026-01-02', value: 2.5 }]);
 });
 
 test('uses pre-flow CSH2 price history to provide a trailing annualized return from the first flow date', () => {
