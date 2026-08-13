@@ -1,6 +1,7 @@
 import { closingQuoteOnOrBefore } from './quotes.mjs';
 import { dateAfter, daysBetween, euro } from './shared.mjs';
 import { runBacktest } from './simulation.mjs';
+import { calculateOvernightBenchmarkPortfolio } from './return-series.mjs';
 
 function trailingPriceTrend(prices, valuationDate, lookbackDays) {
   const valuation = closingQuoteOnOrBefore(prices, valuationDate);
@@ -15,6 +16,52 @@ function trailingPriceTrend(prices, valuationDate, lookbackDays) {
   const dailyGrowthFactor = (valuation.price / trendQuote.price) ** (1 / trendDays);
   if (!Number.isFinite(dailyGrowthFactor) || dailyGrowthFactor <= 0) return undefined;
   return { valuation, trendDays, dailyGrowthFactor, trendReturnPercent: (dailyGrowthFactor ** trendDays - 1) * 100 };
+}
+
+/** Projects all cumulative-return lines to a future interest payout on common assumptions. */
+export function buildReturnProjection(flows, prices, rates, valuationDate, from, payoutDate, payoutAmount, options, { lookbackDays = 30 } = {}) {
+  if (!payoutDate || !Number.isFinite(payoutAmount) || payoutAmount <= 0 || payoutDate <= valuationDate) return undefined;
+  const trend = trailingPriceTrend(prices, valuationDate, lookbackDays);
+  if (!trend) return undefined;
+  const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
+  if (!externalInflows) return undefined;
+  const outflows = flows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
+  const paidInterest = flows.filter((flow) => flow.type === 'inflow' && flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
+  const projectionOptions = { ...options, unpaidAccruedInterest: 0 };
+  const projectedPrices = { ...prices };
+  const csh2 = [];
+  const projectionDays = daysBetween(valuationDate, payoutDate);
+  for (let day = 0; day <= projectionDays; day += 1) {
+    const date = dateAfter(valuationDate, day);
+    if (day) projectedPrices[date] = { close: trend.valuation.price * trend.dailyGrowthFactor ** day };
+    const result = runBacktest(flows, projectedPrices, date, projectionOptions);
+    csh2.push({ date, value: ((result.netLiquidationValue + outflows - externalInflows) / externalInflows) * 100 });
+  }
+
+  const overnightPortfolio = calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, valuationDate, projectionOptions);
+  if (!overnightPortfolio.latestDate || !Number.isFinite(overnightPortfolio.latestRate) || !overnightPortfolio.inflows) return undefined;
+  const overnight = [{ date: overnightPortfolio.latestDate, value: ((overnightPortfolio.balance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 }];
+  let overnightBalance = overnightPortfolio.balance;
+  const overnightDays = daysBetween(overnightPortfolio.latestDate, payoutDate);
+  for (let day = 1; day <= overnightDays; day += 1) {
+    const date = dateAfter(overnightPortfolio.latestDate, day);
+    overnightBalance *= (1 + overnightPortfolio.latestRate / 100) ** (1 / 365);
+    overnight.push({ date, value: ((overnightBalance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 });
+  }
+
+  const currentAccountReturn = (paidInterest / externalInflows) * 100;
+  return {
+    csh2,
+    overnight,
+    account: [
+      { date: valuationDate, value: currentAccountReturn },
+      { date: payoutDate, value: ((paidInterest + payoutAmount) / externalInflows) * 100 }
+    ],
+    payoutDate,
+    trendDays: trend.trendDays,
+    trendReturnPercent: trend.trendReturnPercent,
+    overnightRatePercent: overnightPortfolio.latestRate
+  };
 }
 
 /**

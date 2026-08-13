@@ -1,4 +1,4 @@
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../../backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, estimateBreakEvenDate, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 
@@ -28,6 +28,9 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
     ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, Number(settings.interestPayoutAmount || 0)) as BacktestResult['interestPayoutAssessment']
     : undefined;
   result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions);
+  const projected = settings.interestMode === 'payout'
+    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, Number(settings.interestPayoutAmount || 0), calculationOptions)
+    : undefined;
   return {
     result,
     metadata: market.data,
@@ -37,7 +40,8 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
     returnSeries: {
       csh2: buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions),
       overnight: buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions),
-      account: buildAccountReturnSeries(normalized, valuationDate, calculationOptions)
+      account: buildAccountReturnSeries(normalized, valuationDate, calculationOptions),
+      projected
     }
   };
 }

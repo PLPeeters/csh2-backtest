@@ -22,7 +22,11 @@ export interface RateEnvelope { source?: string; cachedAt?: string; rates: Recor
 export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; version: string }
 export interface ChartPoint { date: string; value: number }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
-export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[] }
+export interface ReturnProjection {
+  csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; payoutDate: string;
+  trendDays: number; trendReturnPercent: number; overnightRatePercent: number;
+}
+export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[]; projected?: ReturnProjection }
 export interface BenchmarkHistory {
   lookback: Record<BackwardPeriod, BenchmarkSeries>;
   forward: Record<ForwardPeriod, BenchmarkSeries>;

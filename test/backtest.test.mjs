@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -111,6 +111,32 @@ test('compares moving now with waiting for a future interest payout using the re
   assert.equal(assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '', 0), undefined);
   assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 0), /positive amount/);
   assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-03-02', 50), /must be after/);
+});
+
+test('projects all cumulative-return series to a future interest payout', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, {});
+
+  assert.ok(projection);
+  assert.equal(projection.csh2[0].date, '2026-03-02');
+  assert.equal(projection.csh2.at(-1).date, '2026-04-02');
+  assert.ok(projection.csh2.at(-1).value > projection.csh2[0].value);
+  assert.equal(projection.overnight[0].date, '2026-03-02');
+  assert.equal(projection.overnight.at(-1).date, '2026-04-02');
+  assert.ok(projection.overnight.at(-1).value > projection.overnight[0].value);
+  assert.deepEqual(projection.account, [
+    { date: '2026-03-02', value: 0 },
+    { date: '2026-04-02', value: 5 }
+  ]);
+  assert.equal(projection.overnightRatePercent, 3);
+  assert.equal(projection.trendDays, 59);
+});
+
+test('omits the combined projection when a comparable market assumption is unavailable', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
+  assert.equal(buildReturnProjection(flows, { '2026-03-02': 120 }, { '2026-03-02': 3 }, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
 });
 
 test('calculates missed earnings percentage from net cash input in whole-share mode', () => {

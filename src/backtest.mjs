@@ -13,7 +13,7 @@ export {
   TOB_RATE
 } from './backtest/shared.mjs';
 export { runBacktest } from './backtest/simulation.mjs';
-export { assessInterestPayoutTiming, estimateBreakEvenDate } from './backtest/projections.mjs';
+export { assessInterestPayoutTiming, buildReturnProjection, estimateBreakEvenDate } from './backtest/projections.mjs';
 export {
   buildAccountReturnSeries,
   buildBacktestReturnSeries,

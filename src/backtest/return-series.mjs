@@ -131,13 +131,15 @@ function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options
 }
 
 /** Mirrors invested CSH2 cash flows while deliberately excluding uninvested whole-share residual cash. */
-export function buildOvernightBenchmarkReturnSeries(flows, prices, rates, valuationDate, from, to, options) {
+export function calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options) {
   const scheduledFlows = benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options).sort((left, right) => left.date.localeCompare(right.date));
   const snapshots = [];
   let flowIndex = 0;
   let balance = 0;
   let inflows = 0;
   let outflows = 0;
+  let latestRate;
+  let latestDate;
   for (const [date, rate] of Object.entries(rates).filter(([date, rate]) => date >= from && date <= to && Number.isFinite(rate)).sort(([left], [right]) => left.localeCompare(right))) {
     balance *= (1 + rate / 100) ** (1 / 365);
     while (flowIndex < scheduledFlows.length && scheduledFlows[flowIndex].date <= date) {
@@ -152,6 +154,13 @@ export function buildOvernightBenchmarkReturnSeries(flows, prices, rates, valuat
       flowIndex += 1;
     }
     if (inflows) snapshots.push({ date, value: ((balance + outflows - inflows) / inflows) * 100 });
+    latestRate = rate;
+    latestDate = date;
   }
-  return snapshots;
+  return { snapshots, balance, inflows, outflows, latestRate, latestDate };
+}
+
+/** Mirrors invested CSH2 cash flows while deliberately excluding uninvested whole-share residual cash. */
+export function buildOvernightBenchmarkReturnSeries(flows, prices, rates, valuationDate, from, to, options) {
+  return calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options).snapshots;
 }
