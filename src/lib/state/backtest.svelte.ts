@@ -1,5 +1,5 @@
 import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
-import { blankFlow, clearStoredState, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
+import { blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
 export interface BacktestDependencies {
@@ -19,7 +19,16 @@ function cloneSettings(settings: CalculationSettings) {
 }
 
 function calculationInputSignature(flows: CashFlowDraft[], settings: CalculationSettings) {
-  return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings });
+  const calculationSettings = {
+    applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
+    applyReyndersTax: settings.applyReyndersTax,
+    buyWholeSharesOnly: settings.buyWholeSharesOnly,
+    unpaidAccruedInterest: settings.unpaidAccruedInterest,
+    interestPayoutDate: settings.interestPayoutDate,
+    interestPayoutAmount: settings.interestPayoutAmount,
+    brokerTransactionFee: settings.brokerTransactionFee
+  };
+  return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings: calculationSettings });
 }
 
 function interestSettingsAreValid(settings: CalculationSettings) {
@@ -45,6 +54,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   let forwardPeriod = $state<ForwardPeriod>('1y');
   let benchmarkAfterTax = $state(false);
   let submittedInputSignature = $state<string>();
+  let submittedFlowsSnapshot: CashFlowDraft[] | undefined;
   let requestGeneration = 0;
   let benchmarkRequestGeneration = 0;
 
@@ -76,11 +86,38 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') { flow.type = value; if (value === 'outflow') flow.interestPayment = false; } persist(); } },
     updateInterestPayment(id: string, value: boolean) { const flow = flows.find((item) => item.id === id); if (flow?.type === 'inflow') { flow.interestPayment = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
-    loadExample() { flows = [{ id: crypto.randomUUID(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: crypto.randomUUID(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: crypto.randomUUID(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
-    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
+    loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
+    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },
     setBenchmarkAfterTax(value: boolean) { benchmarkAfterTax = value; },
+    async setTaxRegime(applyReyndersTax: boolean) {
+      if (settings.applyReyndersTax === applyReyndersTax) return;
+      settings.applyReyndersTax = applyReyndersTax;
+      persist();
+      if (!view || !submittedFlowsSnapshot) return;
+      const generation = ++requestGeneration;
+      const recalculatedFlows = cloneFlows(submittedFlowsSnapshot);
+      const recalculatedSettings = {
+        ...view.settings,
+        applyReyndersTax,
+        accountBaseInterestRate: settings.accountBaseInterestRate,
+        accountFidelityPremium: settings.accountFidelityPremium
+      };
+      status = { kind: 'loading', message: 'Updating the backtest tax regime…' };
+      try {
+        const market = await dependencies.loadMarketData();
+        const nextView = dependencies.calculate(recalculatedFlows, recalculatedSettings, market, dependencies.today());
+        if (generation !== requestGeneration) return;
+        view = nextView;
+        submittedFlowsSnapshot = cloneFlows(recalculatedFlows);
+        submittedInputSignature = calculationInputSignature(recalculatedFlows, recalculatedSettings);
+        status = { kind: 'success', message: `Recalculated using the ${nextView.result.valuation.date} close.` };
+      } catch (error) {
+        if (generation !== requestGeneration) return;
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
     async loadBenchmark() {
       benchmarkStatus = { kind: 'loading', message: 'Loading benchmark market data…' };
       try { await prepareBenchmark(await dependencies.loadMarketData()); }
@@ -98,6 +135,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         const nextView = dependencies.calculate(submittedFlows, submittedSettings, market, dependencies.today());
         if (generation !== requestGeneration) return;
         view = nextView;
+        submittedFlowsSnapshot = cloneFlows(submittedFlows);
         submittedInputSignature = nextSubmittedInputSignature;
         status = { kind: 'success', message: `Calculated using the ${nextView.result.valuation.date} close.` };
         if (!benchmark && benchmarkStatus.kind !== 'loading') void prepareBenchmark(market, nextView.to);

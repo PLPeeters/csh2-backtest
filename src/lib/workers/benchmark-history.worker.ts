@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries } from '../../backtest.mjs';
+import { buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateConstantRateHoldingPeriods } from '../../backtest.mjs';
 import type { BenchmarkHistoryRequest, BenchmarkPeriod, BenchmarkSeries } from '../types';
 
 const lookbackPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825 } as const;
@@ -23,7 +23,15 @@ function buildHistory(request: BenchmarkHistoryRequest, afterTax: boolean, apply
 
 self.onmessage = ({ data }: MessageEvent<BenchmarkHistoryRequest>) => {
   try {
-    self.postMessage({ ok: true, history: { gross: buildHistory(data, false), cgt: buildHistory(data, true), reynders: buildHistory(data, true, true) } });
+    self.postMessage({ ok: true, history: {
+      gross: buildHistory(data, false),
+      cgt: buildHistory(data, true),
+      reynders: buildHistory(data, true, true),
+      holdingPeriods: {
+        cgt: estimateConstantRateHoldingPeriods(data.prices, data.rates, data.to),
+        reynders: estimateConstantRateHoldingPeriods(data.prices, data.rates, data.to, { applyReyndersTax: true })
+      }
+    } });
   } catch (error) {
     self.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) });
   }

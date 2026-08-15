@@ -3,6 +3,12 @@ import type { CalculationSettings, CashFlowDraft, StoredState } from '../types';
 export const flowStorageKey = 'csh2-belgium-flows-v1';
 export const settingsStorageKey = 'csh2-belgium-settings-v1';
 
+let flowIdSequence = 0;
+export function createFlowId() {
+  flowIdSequence += 1;
+  return `flow-${Date.now().toString(36)}-${flowIdSequence.toString(36)}`;
+}
+
 export const defaultSettings = (): CalculationSettings => ({
   applyCapitalGainsExemption: true,
   applyReyndersTax: false,
@@ -10,10 +16,12 @@ export const defaultSettings = (): CalculationSettings => ({
   unpaidAccruedInterest: '',
   interestPayoutDate: '',
   interestPayoutAmount: '',
-  brokerTransactionFee: '0'
+  brokerTransactionFee: '0',
+  accountBaseInterestRate: '',
+  accountFidelityPremium: ''
 });
 
-export const blankFlow = (): CashFlowDraft => ({ id: crypto.randomUUID(), date: '', type: 'inflow', amount: '', interestPayment: false });
+export const blankFlow = (): CashFlowDraft => ({ id: createFlowId(), date: '', type: 'inflow', amount: '', interestPayment: false });
 
 function isFlow(value: unknown): value is Omit<CashFlowDraft, 'id'> & { id?: string } {
   if (!value || typeof value !== 'object') return false;
@@ -31,7 +39,7 @@ function readJson(storage: Storage, key: string): unknown {
 export function loadStoredState(storage: Storage): StoredState {
   const flowValue = readJson(storage, flowStorageKey);
   const flows = Array.isArray(flowValue) && flowValue.every(isFlow)
-    ? flowValue.map((flow) => ({ id: flow.id ?? crypto.randomUUID(), date: flow.date, type: flow.type, amount: String(flow.amount), interestPayment: flow.type === 'inflow' && flow.interestPayment === true }))
+    ? flowValue.map((flow) => ({ id: flow.id ?? createFlowId(), date: flow.date, type: flow.type, amount: String(flow.amount), interestPayment: flow.type === 'inflow' && flow.interestPayment === true }))
     : [blankFlow()];
   if (!Array.isArray(flowValue) && flowValue !== undefined) storage.removeItem(flowStorageKey);
   const defaults = defaultSettings();
@@ -45,7 +53,11 @@ export function loadStoredState(storage: Storage): StoredState {
     unpaidAccruedInterest: typeof candidate.unpaidAccruedInterest === 'string' || typeof candidate.unpaidAccruedInterest === 'number' ? String(candidate.unpaidAccruedInterest) : '',
     interestPayoutDate: typeof candidate.interestPayoutDate === 'string' ? candidate.interestPayoutDate : '',
     interestPayoutAmount: typeof candidate.interestPayoutAmount === 'string' || typeof candidate.interestPayoutAmount === 'number' ? String(candidate.interestPayoutAmount) : '',
-    brokerTransactionFee: typeof candidate.brokerTransactionFee === 'string' || typeof candidate.brokerTransactionFee === 'number' ? String(candidate.brokerTransactionFee) : '0'
+    brokerTransactionFee: typeof candidate.brokerTransactionFee === 'string' || typeof candidate.brokerTransactionFee === 'number' ? String(candidate.brokerTransactionFee) : '0',
+    accountBaseInterestRate: typeof candidate.accountBaseInterestRate === 'string' || typeof candidate.accountBaseInterestRate === 'number'
+      ? String(candidate.accountBaseInterestRate)
+      : typeof candidate.accountInterestRate === 'string' || typeof candidate.accountInterestRate === 'number' ? String(candidate.accountInterestRate) : '',
+    accountFidelityPremium: typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : ''
   };
   return { flows, settings };
 }

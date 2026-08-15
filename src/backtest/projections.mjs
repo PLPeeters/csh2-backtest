@@ -1,5 +1,5 @@
 import { closingQuoteOnOrBefore } from './quotes.mjs';
-import { dateAfter, daysBetween, euro } from './shared.mjs';
+import { CGT_RATE, dateAfter, daysBetween, euro, overnightAccrualFactor, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 import { runBacktest } from './simulation.mjs';
 import { calculateOvernightBenchmarkPortfolio } from './return-series.mjs';
 
@@ -16,6 +16,111 @@ function trailingPriceTrend(prices, valuationDate, lookbackDays) {
   const dailyGrowthFactor = (valuation.price / trendQuote.price) ** (1 / trendDays);
   if (!Number.isFinite(dailyGrowthFactor) || dailyGrowthFactor <= 0) return undefined;
   return { valuation, trendDays, dailyGrowthFactor, trendReturnPercent: (dailyGrowthFactor ** trendDays - 1) * 100 };
+}
+
+function trailingOvernightFactor(rates, from, to) {
+  const entries = Object.entries(rates)
+    .filter(([date, rate]) => date <= to && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right));
+  let activeRate = entries.filter(([date]) => date <= from).at(-1)?.[1];
+  if (!Number.isFinite(activeRate)) return undefined;
+  let factor = 1;
+  let previousDate = from;
+  for (const [date, rate] of entries) {
+    if (date <= from) continue;
+    factor *= overnightAccrualFactor(activeRate, daysBetween(previousDate, date));
+    activeRate = rate;
+    previousDate = date;
+  }
+  factor *= overnightAccrualFactor(activeRate, daysBetween(previousDate, to));
+  return factor;
+}
+
+/** Finds when net CSH2 value catches a constant annual target rate after transaction and gain taxes. */
+export function estimateConstantRateMatch(csh2AnnualRatePercent, targetAnnualRatePercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+  if (![csh2AnnualRatePercent, targetAnnualRatePercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || targetAnnualRatePercent <= -100) return undefined;
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax,
+    (day) => (1 + targetAnnualRatePercent / 100) ** (day / 365));
+}
+
+/** Finds when net CSH2 catches a constant overnight benchmark quoted on an Actual/360 basis. */
+export function estimateOvernightRateMatch(csh2AnnualRatePercent, overnightRatePercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+  if (![csh2AnnualRatePercent, overnightRatePercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || overnightAccrualFactor(overnightRatePercent, 1) <= 0) return undefined;
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax,
+    (day) => overnightAccrualFactor(overnightRatePercent, 1) ** day);
+}
+
+function dateAfterCalendarYears(date, years) {
+  const [year, month, day] = date.split('-').map(Number);
+  const targetYear = year + years;
+  const lastDayOfMonth = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+  return new Date(Date.UTC(targetYear, month - 1, Math.min(day, lastDayOfMonth))).toISOString().slice(0, 10);
+}
+
+/** Finds when net CSH2 catches a savings account whose fidelity premium vests after each uninterrupted year. */
+export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+  const totalAnnualRatePercent = baseAnnualRatePercent + fidelityPremiumPercent;
+  if (![csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || baseAnnualRatePercent <= -100 || fidelityPremiumPercent < 0 || totalAnnualRatePercent <= -100) return undefined;
+  let completedYears = 0;
+  let periodStartDay = 0;
+  let periodEndDay = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, 1));
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, (day) => {
+    while (day >= periodEndDay) {
+      completedYears += 1;
+      periodStartDay = periodEndDay;
+      periodEndDay = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, completedYears + 1));
+    }
+    const periodDays = periodEndDay - periodStartDay;
+    const daysIntoFidelityPeriod = day - periodStartDay;
+    return (1 + totalAnnualRatePercent / 100) ** completedYears * (1 + baseAnnualRatePercent / 100) ** (daysIntoFidelityPeriod / periodDays);
+  });
+}
+
+function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, targetValue) {
+  const dailyGrowthFactor = (1 + csh2AnnualRatePercent / 100) ** (1 / 365);
+  const gainTaxRate = applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE;
+  for (let day = 0; day <= maximumProjectionDays; day += 1) {
+    const priceFactor = dailyGrowthFactor ** day;
+    const gross = (1 - TOB_RATE) * priceFactor;
+    const gain = Math.max(0, (1 - TOB_RATE) * (priceFactor - 1));
+    const net = gross * (1 - TOB_RATE) - gain * gainTaxRate;
+    const target = targetValue(day);
+    if (net >= target) return { date: dateAfter(valuationDate, day), days: day };
+  }
+  return undefined;
+}
+
+/** Estimates holding periods from current €STR plus CSH2's matched trailing excess return. */
+export function estimateConstantRateHoldingPeriods(prices, rates, valuationDate, { lookbackDays = 90, maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+  const trend = trailingPriceTrend(prices, valuationDate, lookbackDays);
+  if (!trend) return undefined;
+  const latestRate = Object.entries(rates)
+    .filter(([date, rate]) => date <= trend.valuation.date && Number.isFinite(rate))
+    .sort(([left], [right]) => right.localeCompare(left))[0];
+  const trailingOvernight = trailingOvernightFactor(rates, dateAfter(trend.valuation.date, -trend.trendDays), trend.valuation.date);
+  if (!latestRate || latestRate[1] <= -100 || !Number.isFinite(trailingOvernight) || trailingOvernight <= 0) return undefined;
+  const observedCsh2AnnualFactor = trend.dailyGrowthFactor ** 365;
+  const observedOvernightAnnualFactor = trailingOvernight ** (365 / trend.trendDays);
+  const csh2ExcessAnnualFactor = observedCsh2AnnualFactor / observedOvernightAnnualFactor;
+  const currentOvernightAnnualFactor = overnightAccrualFactor(latestRate[1], 1) ** 365;
+  const csh2AnnualFactor = currentOvernightAnnualFactor * csh2ExcessAnnualFactor;
+  if (![observedCsh2AnnualFactor, observedOvernightAnnualFactor, csh2ExcessAnnualFactor, currentOvernightAnnualFactor, csh2AnnualFactor].every((factor) => Number.isFinite(factor) && factor > 0)) return undefined;
+  const csh2AnnualRatePercent = (csh2AnnualFactor - 1) * 100;
+  const matchOptions = { maximumProjectionDays, applyReyndersTax };
+  return {
+    valuationDate: trend.valuation.date,
+    trendStartDate: dateAfter(trend.valuation.date, -trend.trendDays),
+    rateDate: latestRate[0],
+    trendDays: trend.trendDays,
+    csh2AnnualRatePercent,
+    observedCsh2AnnualRatePercent: (observedCsh2AnnualFactor - 1) * 100,
+    observedOvernightAnnualRatePercent: (observedOvernightAnnualFactor - 1) * 100,
+    csh2ExcessAnnualRatePercent: (csh2ExcessAnnualFactor - 1) * 100,
+    currentOvernightAnnualRatePercent: (currentOvernightAnnualFactor - 1) * 100,
+    overnightRatePercent: latestRate[1],
+    breakEven: estimateConstantRateMatch(csh2AnnualRatePercent, 0, trend.valuation.date, matchOptions),
+    matchOvernight: estimateOvernightRateMatch(csh2AnnualRatePercent, latestRate[1], trend.valuation.date, matchOptions)
+  };
 }
 
 /** Projects all cumulative-return lines to a future interest payout on common assumptions. */
@@ -46,7 +151,7 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
   const overnightDays = daysBetween(overnightPortfolio.latestDate, payoutDate);
   for (let day = 1; day <= overnightDays; day += 1) {
     const date = dateAfter(overnightPortfolio.latestDate, day);
-    overnightBalance *= (1 + overnightPortfolio.latestRate / 100) ** (1 / 365);
+    overnightBalance *= overnightAccrualFactor(overnightPortfolio.latestRate, 1);
     overnight.push({ date, value: ((overnightBalance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 });
   }
 

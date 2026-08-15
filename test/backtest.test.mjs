@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, runBacktest } from '../src/backtest.mjs';
+import { readFile } from 'node:fs/promises';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -196,6 +197,109 @@ test('does not estimate break-even without a positive 30-day CSH2 price trend', 
     '2026-01-31': 100
   }, '2026-01-31');
   assert.equal(estimate, undefined);
+});
+
+test('estimates investment-agnostic holding periods from constant current rates', () => {
+  const prices = { '2026-01-01': 100, '2026-01-31': 100.3 };
+  const rates = { '2026-01-01': 3, '2026-01-30': 3 };
+  const cgt = estimateConstantRateHoldingPeriods(prices, rates, '2026-01-31', { lookbackDays: 30 });
+  const reynders = estimateConstantRateHoldingPeriods(prices, rates, '2026-01-31', { lookbackDays: 30, applyReyndersTax: true });
+
+  assert.equal(cgt.valuationDate, '2026-01-31');
+  assert.equal(cgt.rateDate, '2026-01-30');
+  assert.equal(cgt.trendDays, 30);
+  assert.equal(cgt.overnightRatePercent, 3);
+  assert.ok(cgt.observedCsh2AnnualRatePercent > cgt.observedOvernightAnnualRatePercent);
+  assert.ok(cgt.csh2ExcessAnnualRatePercent > 0);
+  assert.ok(cgt.breakEven.days > 0);
+  assert.ok(cgt.matchOvernight.days > cgt.breakEven.days);
+  assert.ok(reynders.breakEven.days > cgt.breakEven.days);
+  assert.ok(reynders.matchOvernight.days > cgt.matchOvernight.days);
+  assert.deepEqual(
+    estimateOvernightRateMatch(cgt.csh2AnnualRatePercent, cgt.overnightRatePercent, cgt.valuationDate),
+    cgt.matchOvernight
+  );
+});
+
+test('combines current overnight rate with CSH2 excess over the same trailing window', () => {
+  const observedCsh2AnnualFactor = 1.04;
+  const historicalOvernightFactor = overnightAccrualFactor(2, 90);
+  const historicalOvernightAnnualFactor = historicalOvernightFactor ** (365 / 90);
+  const currentOvernightAnnualFactor = overnightAccrualFactor(3, 1) ** 365;
+  const expectedCsh2AnnualFactor = currentOvernightAnnualFactor * observedCsh2AnnualFactor / historicalOvernightAnnualFactor;
+  const estimate = estimateConstantRateHoldingPeriods({
+    '2026-01-01': 100,
+    '2026-04-01': 100 * observedCsh2AnnualFactor ** (90 / 365)
+  }, {
+    '2026-01-01': 2,
+    '2026-04-01': 3
+  }, '2026-04-01');
+
+  assert.ok(estimate);
+  assert.equal(estimate.trendDays, 90);
+  assert.equal(estimate.trendStartDate, '2026-01-01');
+  assert.ok(Math.abs(estimate.observedCsh2AnnualRatePercent - 4) < 1e-10);
+  assert.ok(Math.abs(estimate.observedOvernightAnnualRatePercent - (historicalOvernightAnnualFactor - 1) * 100) < 1e-10);
+  assert.ok(Math.abs(estimate.currentOvernightAnnualRatePercent - (currentOvernightAnnualFactor - 1) * 100) < 1e-10);
+  assert.ok(Math.abs(estimate.csh2AnnualRatePercent - (expectedCsh2AnnualFactor - 1) * 100) < 1e-10);
+  assert.ok(estimate.csh2AnnualRatePercent > estimate.observedCsh2AnnualRatePercent);
+});
+
+test('does not estimate current-rate holding periods without both market rates', () => {
+  assert.equal(estimateConstantRateHoldingPeriods({ '2026-01-31': 100 }, { '2026-01-30': 3 }, '2026-01-31'), undefined);
+  assert.equal(estimateConstantRateHoldingPeriods({ '2026-01-01': 100, '2026-01-31': 100.3 }, {}, '2026-01-31'), undefined);
+});
+
+test('reports a constant-rate threshold as unreached within the projection horizon', () => {
+  const estimate = estimateConstantRateHoldingPeriods(
+    { '2026-01-01': 100, '2026-01-31': 100.2 },
+    { '2026-01-01': 3, '2026-01-30': 3 },
+    '2026-01-31',
+    { lookbackDays: 30, maximumProjectionDays: 365 }
+  );
+  assert.ok(estimate.breakEven);
+  assert.equal(estimate.matchOvernight, undefined);
+});
+
+test('does not make the fidelity premium available before 12 uninterrupted months', () => {
+  const withoutPremium = estimateSavingsAccountRateMatch(4, 3, 0, '2026-01-01');
+  const withPremium = estimateSavingsAccountRateMatch(4, 3, 2, '2026-01-01');
+
+  assert.ok(withoutPremium);
+  assert.ok(withoutPremium.days < 365);
+  assert.deepEqual(withPremium, withoutPremium);
+});
+
+test('applies the fidelity premium after each completed uninterrupted year', () => {
+  const baseOnly = estimateSavingsAccountRateMatch(3.6, 3, 0, '2026-01-01');
+  const withPremium = estimateSavingsAccountRateMatch(3.6, 3, 2, '2026-01-01');
+
+  assert.ok(baseOnly);
+  assert.ok(baseOnly.days >= 365);
+  assert.equal(withPremium, undefined);
+  assert.equal(estimateSavingsAccountRateMatch(3.2, 2.5, -0.1, '2026-01-01'), undefined);
+});
+
+test('does not vest the fidelity premium before the calendar anniversary across a leap day', () => {
+  assert.deepEqual(estimateSavingsAccountRateMatch(3.6, 3, 2, '2027-03-01'), {
+    date: '2028-02-29',
+    days: 365
+  });
+});
+
+test('finds the first observed dates that a backtest breaks even and matches the overnight benchmark', () => {
+  assert.deepEqual(findObservedHoldingPeriods([
+    { date: '2026-01-02', value: -0.24 },
+    { date: '2026-01-05', value: 0.04 },
+    { date: '2026-01-06', value: 0.12 }
+  ], [
+    { date: '2026-01-02', value: 0 },
+    { date: '2026-01-05', value: 0.05 },
+    { date: '2026-01-06', value: 0.08 }
+  ], '2026-01-02'), {
+    breakEven: { date: '2026-01-05', days: 3 },
+    matchOvernight: { date: '2026-01-06', days: 4 }
+  });
 });
 
 test('applies the annual capital-gains exemption and carry-forward when selected', () => {
@@ -441,7 +545,8 @@ test('uses the same trailing annualization for the compounded overnight benchmar
   const series = buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, '2025-12-30', '2025-12-30');
   assert.equal(series.length, 1);
   assert.equal(series[0].date, '2025-12-30');
-  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+  const expected = (overnightAccrualFactor(3, 1) ** 365 - 1) * 100;
+  assert.ok(Math.abs(series[0].value - expected) < 0.000001);
 });
 
 test('uses a selected 1-month lookback while retaining annualization for the overnight benchmark', () => {
@@ -450,7 +555,8 @@ test('uses a selected 1-month lookback while retaining annualization for the ove
     '2026-01-01': 3
   }, '2026-01-01', '2026-01-01', { lookbackDays: 30 });
   assert.equal(series.length, 1);
-  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+  const expected = (overnightAccrualFactor(3, 31) ** (365 / 31) - 1) * 100;
+  assert.ok(Math.abs(series[0].value - expected) < 0.000001);
 });
 
 test('builds a forward annualized overnight benchmark return at the start of the measured period', () => {
@@ -460,7 +566,8 @@ test('builds a forward annualized overnight benchmark return at the start of the
   }, '2025-01-01', '2026-01-01');
   assert.equal(series.length, 1);
   assert.equal(series[0].date, '2025-01-01');
-  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+  const expected = (overnightAccrualFactor(3, 365) - 1) * 100;
+  assert.ok(Math.abs(series[0].value - expected) < 0.000001);
 });
 
 test('leaves the overnight benchmark unchanged in after-tax comparisons', () => {
@@ -479,7 +586,8 @@ test('carries an overnight rate across calendar gaps before annualizing it', () 
     '2025-12-30': 3
   }, '2025-12-30', '2025-12-30');
   assert.equal(series.length, 1);
-  assert.ok(Math.abs(series[0].value - 3) < 0.000001);
+  const expected = (overnightAccrualFactor(3, 90) ** (365 / 90) - 1) * 100;
+  assert.ok(Math.abs(series[0].value - expected) < 0.000001);
 });
 
 test('excludes whole-share residual cash from the overnight benchmark portfolio', () => {
@@ -500,7 +608,35 @@ test('excludes whole-share residual cash from the overnight benchmark portfolio'
   assert.equal(series[0].value, 0);
   assert.equal(series.at(-1).date, '2026-03-02');
   assert.ok(series.at(-1).value > 0);
-  assert.ok(series.at(-1).value < 0.1);
+  assert.ok(series.at(-1).value < 0.6);
+});
+
+test('accrues the overnight portfolio across weekends and publication gaps', () => {
+  const series = buildOvernightBenchmarkReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 1000 }
+  ], {
+    '2026-01-02': 100,
+    '2026-01-06': 100
+  }, {
+    '2026-01-02': 3,
+    '2026-01-06': 3
+  }, '2026-01-06', '2026-01-02', '2026-01-06');
+
+  const expected = ((1 + 0.03 * 4 / 360) - 1) * 100;
+  assert.ok(Math.abs(series.at(-1).value - expected) < 0.000000001);
+});
+
+test('matches the official ECB compounded €STR index over a historical interval', async () => {
+  const rates = JSON.parse(await readFile(new URL('../src/assets/data/overnight-rates.json', import.meta.url), 'utf8')).rates;
+  const series = buildOvernightBenchmarkReturnSeries([
+    { date: '2025-08-15', type: 'inflow', amount: 1000 }
+  ], {
+    '2025-08-15': 100,
+    '2026-07-10': 100
+  }, rates, '2026-07-10', '2025-08-15', '2026-07-10');
+  const officialIndexReturn = ((109.33409115 / 107.40606381) - 1) * 100;
+
+  assert.ok(Math.abs(series.at(-1).value - officialIndexReturn) < 0.00000001);
 });
 
 test('does not add paid interest to the overnight benchmark portfolio', () => {

@@ -1,4 +1,4 @@
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, estimateBreakEvenDate, runBacktest } from '../../backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 
@@ -31,7 +31,16 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   const valuationDate = latestAvailablePriceDate(market.data.prices, today);
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
   const calculationOptions = options(settings);
-  const result = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions) as BacktestResult;
+  const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions);
+  const overnight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
+  const simulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions);
+  const firstPurchaseDate = simulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
+  const result = {
+    ...simulation,
+    observedHoldingPeriods: firstPurchaseDate
+      ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) }
+      : {}
+  } as BacktestResult;
   result.interestPayoutAssessment = hasPayoutDate
     ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, interestPayoutAmount) as BacktestResult['interestPayoutAssessment']
     : undefined;
@@ -47,8 +56,8 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
     from: firstInvestment.date,
     to: valuationDate,
     returnSeries: {
-      csh2: buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions),
-      overnight: buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions),
+      csh2,
+      overnight,
       account: buildAccountReturnSeries(normalized, valuationDate, calculationOptions),
       projected
     }

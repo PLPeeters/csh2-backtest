@@ -1,6 +1,7 @@
 <script lang="ts">
   import Papa from 'papaparse';
   import { detectCsvMapping, mapImportedRows } from '../../cash-flow-csv.mjs';
+  import { createFlowId } from '../services/storage';
   import type { BacktestController } from '../state/backtest.svelte';
   import type { CashFlowDraft, CashFlowType } from '../types';
 
@@ -35,7 +36,7 @@
   function importRows() {
     const mapped = mapImportedRows(csvRows, { dateColumn, amountColumn, dateFormat });
     if (!mapped.flows.length) return;
-    const imported = mapped.flows.map((flow: { date: string; type: CashFlowType; amount: number }) => ({ ...flow, id: crypto.randomUUID(), amount: String(flow.amount), interestPayment: false }));
+    const imported = mapped.flows.map((flow: { date: string; type: CashFlowType; amount: number }) => ({ ...flow, id: createFlowId(), amount: String(flow.amount), interestPayment: false }));
     const untouched = controller.flows.length === 1 && !controller.flows[0].date && !controller.flows[0].amount;
     controller.replaceFlows(untouched ? imported : ([...controller.flows, ...imported] as CashFlowDraft[]).toSorted((a, b) => a.date.localeCompare(b.date)));
     resetCsv();

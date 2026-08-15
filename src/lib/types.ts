@@ -13,6 +13,8 @@ export interface CalculationSettings {
   interestPayoutDate: string;
   interestPayoutAmount: string;
   brokerTransactionFee: string;
+  accountBaseInterestRate: string;
+  accountFidelityPremium: string;
 }
 export interface PriceRecord { open?: number; close: number; isFallback?: boolean; fallbackSource?: string }
 export interface PriceEnvelope { source?: string; cachedAt: string; prices: Record<string, PriceRecord | number> }
@@ -29,7 +31,18 @@ export interface BenchmarkHistorySeries {
   lookback: Record<BackwardPeriod, BenchmarkSeries>;
   forward: Record<ForwardPeriod, BenchmarkSeries>;
 }
-export interface BenchmarkHistory { gross: BenchmarkHistorySeries; cgt: BenchmarkHistorySeries; reynders: BenchmarkHistorySeries }
+export interface MinimumHoldingPeriod { date: string; days: number }
+export interface ObservedHoldingPeriods { from?: string; breakEven?: MinimumHoldingPeriod; matchOvernight?: MinimumHoldingPeriod }
+export interface ConstantRateHoldingPeriods {
+  valuationDate: string; trendStartDate: string; rateDate: string; trendDays: number; csh2AnnualRatePercent: number; overnightRatePercent: number;
+  observedCsh2AnnualRatePercent: number; observedOvernightAnnualRatePercent: number; csh2ExcessAnnualRatePercent: number;
+  currentOvernightAnnualRatePercent: number;
+  breakEven?: MinimumHoldingPeriod; matchOvernight?: MinimumHoldingPeriod;
+}
+export interface BenchmarkHistory {
+  gross: BenchmarkHistorySeries; cgt: BenchmarkHistorySeries; reynders: BenchmarkHistorySeries;
+  holdingPeriods: { cgt?: ConstantRateHoldingPeriods; reynders?: ConstantRateHoldingPeriods };
+}
 export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string }
 export interface LedgerEntry {
   date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;
@@ -45,6 +58,7 @@ export interface BacktestResult {
   paidTob: number; paidCgt: number; paidReyndersTax: number; terminalTob: number; terminalCgt: number;
   terminalReyndersTax: number; paidBrokerFees: number; terminalBrokerFee: number; missedAmount: number;
   missedSharePercent?: number; entries: LedgerEntry[]; breakEvenEstimate?: BreakEvenEstimate;
+  observedHoldingPeriods: ObservedHoldingPeriods;
   interestPayoutAssessment?: InterestPayoutAssessment;
 }
 export interface CalculationView {

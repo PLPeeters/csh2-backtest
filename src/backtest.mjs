@@ -9,11 +9,12 @@ export {
   CGT_EXEMPTION_START_YEAR,
   CGT_RATE,
   MAXIMUM_CGT_EXEMPTION,
+  overnightAccrualFactor,
   REYNDERS_TAX_RATE,
   TOB_RATE
 } from './backtest/shared.mjs';
 export { runBacktest } from './backtest/simulation.mjs';
-export { assessInterestPayoutTiming, buildReturnProjection, estimateBreakEvenDate } from './backtest/projections.mjs';
+export { assessInterestPayoutTiming, buildReturnProjection, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch } from './backtest/projections.mjs';
 export {
   buildAccountReturnSeries,
   buildBacktestReturnSeries,
@@ -21,5 +22,6 @@ export {
   buildForwardAnnualizedOvernightBenchmarkReturnSeries,
   buildOvernightBenchmarkReturnSeries,
   buildTrailingAnnualizedCsh2ReturnSeries,
-  buildTrailingAnnualizedOvernightBenchmarkReturnSeries
+  buildTrailingAnnualizedOvernightBenchmarkReturnSeries,
+  findObservedHoldingPeriods
 } from './backtest/return-series.mjs';

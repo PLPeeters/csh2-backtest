@@ -6,6 +6,11 @@ export const CGT_EXEMPTION_CARRY_INCREMENT = 1000;
 export const MAXIMUM_CGT_EXEMPTION = 15000;
 export const CGT_EXEMPTION_START_YEAR = 2026;
 
+/** Applies the European money-market Actual/360 convention for one overnight-rate interval. */
+export function overnightAccrualFactor(annualRatePercent, calendarDays) {
+  return 1 + (annualRatePercent / 100) * (calendarDays / 360);
+}
+
 export function euro(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }

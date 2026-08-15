@@ -22,5 +22,8 @@ export function relativeUpdatedAt(value: Date, now = new Date()) {
 export function duration(from: string, to: string) {
   const start = DateTime.fromISO(from, { zone: 'utc' });
   const end = DateTime.fromISO(to, { zone: 'utc' });
-  return Duration.fromObject(end.diff(start, ['years', 'months', 'days']).toObject()).toHuman({ listStyle: 'long' });
+  const parts = Object.fromEntries(
+    Object.entries(end.diff(start, ['years', 'months', 'days']).toObject()).filter(([, value]) => value)
+  );
+  return Object.keys(parts).length ? Duration.fromObject(parts).toHuman({ listStyle: 'long' }) : '0 days';
 }

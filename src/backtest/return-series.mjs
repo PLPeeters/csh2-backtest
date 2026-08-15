@@ -1,4 +1,4 @@
-import { CGT_EXEMPTION_START_YEAR, CGT_RATE, daysBetween, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
+import { CGT_EXEMPTION_START_YEAR, CGT_RATE, daysBetween, overnightAccrualFactor, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 import { isUsableClose, priceValue } from './quotes.mjs';
 import { runBacktest } from './simulation.mjs';
 
@@ -115,7 +115,7 @@ export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, fro
     .filter(([date, rate]) => date <= to && Number.isFinite(rate))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, rate]) => {
-      if (previousDate) value *= (1 + previousRate / 100) ** (daysBetween(previousDate, date) / 365);
+      if (previousDate) value *= overnightAccrualFactor(previousRate, daysBetween(previousDate, date));
       previousDate = date;
       previousRate = rate;
       return { date, value };
@@ -131,7 +131,7 @@ export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from
     .filter(([date, rate]) => date <= to && Number.isFinite(rate))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, rate]) => {
-      if (previousDate) value *= (1 + previousRate / 100) ** (daysBetween(previousDate, date) / 365);
+      if (previousDate) value *= overnightAccrualFactor(previousRate, daysBetween(previousDate, date));
       previousDate = date;
       previousRate = rate;
       return { date, value };
@@ -156,15 +156,25 @@ function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options
 /** Mirrors invested CSH2 cash flows while deliberately excluding uninvested whole-share residual cash. */
 export function calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options) {
   const scheduledFlows = benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options).sort((left, right) => left.date.localeCompare(right.date));
+  const rateEntries = Object.entries(rates)
+    .filter(([date, rate]) => date <= to && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right));
+  const ratesByDate = new Map(rateEntries);
+  const eventDates = new Set([from, to]);
+  for (const [date] of rateEntries) if (date >= from) eventDates.add(date);
+  for (const [date, record] of Object.entries(prices)) if (date >= from && date <= to && !record?.isFallback) eventDates.add(date);
+  for (const flow of scheduledFlows) if (flow.date >= from && flow.date <= to) eventDates.add(flow.date);
   const snapshots = [];
   let flowIndex = 0;
   let balance = 0;
   let inflows = 0;
   let outflows = 0;
-  let latestRate;
+  let latestRate = rateEntries.filter(([date]) => date <= from).at(-1)?.[1];
   let latestDate;
-  for (const [date, rate] of Object.entries(rates).filter(([date, rate]) => date >= from && date <= to && Number.isFinite(rate)).sort(([left], [right]) => left.localeCompare(right))) {
-    balance *= (1 + rate / 100) ** (1 / 365);
+  let previousDate = from;
+  for (const date of [...eventDates].sort()) {
+    if (date > previousDate && Number.isFinite(latestRate)) balance *= overnightAccrualFactor(latestRate, daysBetween(previousDate, date));
+    if (ratesByDate.has(date)) latestRate = ratesByDate.get(date);
     while (flowIndex < scheduledFlows.length && scheduledFlows[flowIndex].date <= date) {
       const flow = scheduledFlows[flowIndex];
       if (flow.type === 'inflow') {
@@ -177,8 +187,8 @@ export function calculateOvernightBenchmarkPortfolio(flows, prices, rates, valua
       flowIndex += 1;
     }
     if (inflows) snapshots.push({ date, value: ((balance + outflows - inflows) / inflows) * 100 });
-    latestRate = rate;
-    latestDate = date;
+    if (Number.isFinite(latestRate)) latestDate = date;
+    previousDate = date;
   }
   return { snapshots, balance, inflows, outflows, latestRate, latestDate };
 }
@@ -186,4 +196,21 @@ export function calculateOvernightBenchmarkPortfolio(flows, prices, rates, valua
 /** Mirrors invested CSH2 cash flows while deliberately excluding uninvested whole-share residual cash. */
 export function buildOvernightBenchmarkReturnSeries(flows, prices, rates, valuationDate, from, to, options) {
   return calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options).snapshots;
+}
+
+/** Finds when an actual taxed CSH2 backtest first breaks even and catches its overnight benchmark. */
+export function findObservedHoldingPeriods(csh2, overnight, from) {
+  let breakEven;
+  let matchOvernight;
+  let overnightIndex = -1;
+  for (const point of csh2) {
+    if (!breakEven && point.value >= 0) breakEven = { date: point.date, days: daysBetween(from, point.date) };
+    while (overnightIndex + 1 < overnight.length && overnight[overnightIndex + 1].date <= point.date) overnightIndex += 1;
+    const benchmark = overnight[overnightIndex];
+    if (!matchOvernight && benchmark && point.value >= benchmark.value) {
+      matchOvernight = { date: point.date, days: daysBetween(from, point.date) };
+    }
+    if (breakEven && matchOvernight) break;
+  }
+  return { breakEven, matchOvernight };
 }
