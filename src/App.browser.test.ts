@@ -54,6 +54,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText(/0,5% base rate and 0% fidelity premium/)).toBeVisible();
     await fidelityPremium.fill('2');
     await expect.element(page.getByText(/0,5% base rate and 2% fidelity premium/)).toBeVisible();
+    await expect.element(page.getByText(/Before the first fidelity premium · First re-match: .* after the first fidelity premium/)).toBeVisible();
     expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"accountBaseInterestRate":"0.5"');
     expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"accountFidelityPremium":"2"');
     await expect.element(page.getByLabelText('Backward annualized CSH2 return compared with the Euro overnight benchmark over 1 year')).toBeVisible();

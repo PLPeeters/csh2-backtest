@@ -137,6 +137,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .metric p { margin-bottom: 12px; color: #50645a; font-size: .8rem; }
 .metric strong { display: block; font-size: 1.4rem; letter-spacing: -.03em; }
 .metric small { display: block; margin-top: 8px; color: #63746b; font-size: .78rem; line-height: 1.35; }
+.account-match-timing { display: block; margin-bottom: 3px; color: #415b4f; font-weight: 650; }
 .metric.main small { color: #c9ddd3; }
 .source { margin: 0; color: #64766d; font-size: .8rem; text-align: right; }
 .timestamp-wrapper { position: relative; display: inline-block; }

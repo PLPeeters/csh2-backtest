@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { estimateSavingsAccountRateMatch } from '../../backtest.mjs';
+  import { estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from '../../backtest.mjs';
   import type { BacktestController } from '../state/backtest.svelte';
   import { date, duration, percent } from '../services/formatters';
   import LineChart from './LineChart.svelte';
@@ -8,6 +8,14 @@
   let methodologyDialog = $state<HTMLDialogElement>();
   const precisePercent = (value: number) => value.toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const longDate = (value: string) => date.format(new Date(`${value}T00:00:00Z`));
+  const ordinal = (value: number) => {
+    if (value === 1) return 'first';
+    if (value === 2) return 'second';
+    if (value === 3) return 'third';
+    const remainder = value % 100;
+    if (remainder >= 11 && remainder <= 13) return `${value}th`;
+    return `${value}${value % 10 === 1 ? 'st' : value % 10 === 2 ? 'nd' : value % 10 === 3 ? 'rd' : 'th'}`;
+  };
   const periods = { '1m': { label: '1M', description: '1 month' }, '3m': { label: '3M', description: '3 months' }, '6m': { label: '6M', description: '6 months' }, '1y': { label: '1Y', description: '1 year' }, '2y': { label: '2Y', description: '2 years' }, '5y': { label: '5Y', description: '5 years' } } as const;
   let period = $derived(controller.direction === 'backward' ? controller.backwardPeriod : controller.forwardPeriod);
   let benchmarkUsesReyndersTax = $derived(controller.settings.applyReyndersTax);
@@ -16,9 +24,28 @@
   let accountBaseRate = $derived(Number(controller.settings.accountBaseInterestRate || 0));
   let accountFidelityPremium = $derived(Number(controller.settings.accountFidelityPremium || 0));
   let accountRateIsValid = $derived(Number.isFinite(accountBaseRate) && accountBaseRate > -100 && Number.isFinite(accountFidelityPremium) && accountFidelityPremium >= 0 && accountBaseRate + accountFidelityPremium > -100);
-  let matchAccount = $derived(holdingPeriods && accountRateIsValid
-    ? estimateSavingsAccountRateMatch(holdingPeriods.csh2AnnualRatePercent, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+  let accountMatches = $derived(holdingPeriods && accountRateIsValid && accountFidelityPremium > 0
+    ? estimateSavingsAccountRateMatches(holdingPeriods.csh2AnnualRatePercent, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
     : undefined);
+  let matchAccount = $derived(accountMatches
+    ? accountMatches.beforeFidelity ?? accountMatches.afterFidelity
+    : holdingPeriods && accountRateIsValid
+      ? estimateSavingsAccountRateMatch(holdingPeriods.csh2AnnualRatePercent, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+      : undefined);
+  let accountMatchTiming = $derived(accountMatches?.beforeFidelity
+    ? accountMatches.afterFidelity?.days === accountMatches.firstFidelityDays
+      ? 'Before the first fidelity premium · Still ahead after it.'
+      : accountMatches.afterFidelity && accountMatches.fidelityMatchWindow
+        ? (() => {
+          const window = accountMatches.fidelityMatchWindow;
+          return window.daysAfterPreviousAward <= window.daysBeforeNextAward
+            ? `Before the first fidelity premium · First re-match: ${duration(window.previousAwardDate, accountMatches.afterFidelity.date)} after the ${ordinal(window.previousAwardNumber)} fidelity premium.`
+            : `Before the first fidelity premium · First re-match: ${duration(accountMatches.afterFidelity.date, window.nextAwardDate)} before the ${ordinal(window.nextAwardNumber)} fidelity premium.`;
+        })()
+        : 'Before the first fidelity premium · No re-match within 100 years.'
+    : accountMatches
+      ? 'Includes vested fidelity premiums.'
+      : '');
   let selectedSeries = $derived(controller.benchmark?.[controller.benchmarkAfterTax ? benchmarkUsesReyndersTax ? 'reynders' : 'cgt' : 'gross']?.[controller.direction === 'backward' ? 'lookback' : 'forward']?.[period as '1y']);
 </script>
 
@@ -29,7 +56,7 @@
     </div>
   </div>
   {#if holdingPeriods}
-    <div class="metric-row metric-row-details benchmark-holding-periods"><article class="metric"><p>Time to break even at current rates</p><strong>{holdingPeriods.breakEven ? duration(holdingPeriods.valuationDate, holdingPeriods.breakEven.date) : 'More than 100 years'}</strong><small>Assumes CSH2 stays at its estimated current rate of {percent(holdingPeriods.csh2AnnualRatePercent)}%.</small></article><article class="metric"><p>Time to match your account rate at current rates</p><strong>{!accountRateIsEntered ? 'Enter your account rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years'}</strong><small>{!accountRateIsEntered ? 'Add the base rate and fidelity premium above.' : !accountRateIsValid ? 'The base rate must exceed -100% and the fidelity premium cannot be negative.' : `Assumes a ${percent(accountBaseRate)}% base rate and ${percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.`}</small></article><article class="metric"><p>Time to match €STR at current rates</p><strong>{holdingPeriods.matchOvernight ? duration(holdingPeriods.valuationDate, holdingPeriods.matchOvernight.date) : 'More than 100 years'}</strong><small>Assumes estimated CSH2 stays at {percent(holdingPeriods.csh2AnnualRatePercent)}% and published €STR stays at {percent(holdingPeriods.overnightRatePercent)}%.</small></article></div>
+    <div class="metric-row metric-row-details benchmark-holding-periods"><article class="metric"><p>Time to break even at current rates</p><strong>{holdingPeriods.breakEven ? duration(holdingPeriods.valuationDate, holdingPeriods.breakEven.date) : 'More than 100 years'}</strong><small>Assumes CSH2 stays at its estimated current rate of {percent(holdingPeriods.csh2AnnualRatePercent)}%.</small></article><article class="metric"><p>Time to match your account rate at current rates</p><strong>{!accountRateIsEntered ? 'Enter your account rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years'}</strong><small>{!accountRateIsEntered ? 'Add the base rate and fidelity premium above.' : !accountRateIsValid ? 'The base rate must exceed -100% and the fidelity premium cannot be negative.' : ''}{#if accountRateIsEntered && accountRateIsValid}{#if accountMatchTiming}<span class="account-match-timing">{accountMatchTiming}</span>{/if}<span>Assumes a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</small></article><article class="metric"><p>Time to match €STR at current rates</p><strong>{holdingPeriods.matchOvernight ? duration(holdingPeriods.valuationDate, holdingPeriods.matchOvernight.date) : 'More than 100 years'}</strong><small>Assumes estimated CSH2 stays at {percent(holdingPeriods.csh2AnnualRatePercent)}% and published €STR stays at {percent(holdingPeriods.overnightRatePercent)}%.</small></article></div>
     <p class="chart-explanation holding-period-explanation">Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.</p>
   {:else if controller.benchmarkStatus.kind === 'success'}
     <p class="chart-explanation holding-period-explanation">Current-rate holding periods are unavailable because comparable recent CSH2 or overnight-rate data is missing.</p>

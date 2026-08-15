@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -268,6 +268,53 @@ test('does not make the fidelity premium available before 12 uninterrupted month
   assert.ok(withoutPremium);
   assert.ok(withoutPremium.days < 365);
   assert.deepEqual(withPremium, withoutPremium);
+});
+
+test('reports account matches separately before and after the first fidelity premium', () => {
+  const matches = estimateSavingsAccountRateMatches(4, 3, 2, '2026-01-01');
+
+  assert.ok(matches.beforeFidelity);
+  assert.ok(matches.beforeFidelity.days < matches.firstFidelityDays);
+  assert.equal(matches.afterFidelity, undefined);
+});
+
+test('recognizes when a pre-fidelity match survives the first premium', () => {
+  const matches = estimateSavingsAccountRateMatches(6, 3, 2, '2026-01-01');
+
+  assert.ok(matches.beforeFidelity);
+  assert.equal(matches.afterFidelity.days, matches.firstFidelityDays);
+});
+
+test('finds the first re-match after the fidelity premium overtakes CSH2', () => {
+  const matches = estimateSavingsAccountRateMatches(5.3, 3, 2, '2026-01-01');
+
+  assert.ok(matches.beforeFidelity);
+  assert.ok(matches.afterFidelity.days > matches.firstFidelityDays);
+  assert.deepEqual(matches.fidelityMatchWindow, {
+    previousAwardNumber: 1,
+    previousAwardDate: '2027-01-01',
+    daysAfterPreviousAward: matches.afterFidelity.days - matches.firstFidelityDays,
+    nextAwardNumber: 2,
+    nextAwardDate: '2028-01-01',
+    daysBeforeNextAward: 730 - matches.afterFidelity.days
+  });
+});
+
+test('reports a marginal re-match relative to the next fidelity premium', () => {
+  const matches = estimateSavingsAccountRateMatches(2.5494856545249966, 1.67, 1.01, '2026-08-14');
+  const misses = estimateSavingsAccountRateMatches(2.5494856545249966, 1.67, 1.02, '2026-08-14');
+
+  assert.deepEqual(matches.afterFidelity, { date: '2028-08-10', days: 727 });
+  assert.deepEqual(matches.fidelityMatchWindow, {
+    previousAwardNumber: 1,
+    previousAwardDate: '2027-08-14',
+    daysAfterPreviousAward: 362,
+    nextAwardNumber: 2,
+    nextAwardDate: '2028-08-14',
+    daysBeforeNextAward: 4
+  });
+  assert.equal(misses.afterFidelity, undefined);
+  assert.equal(misses.fidelityMatchWindow, undefined);
 });
 
 test('applies the fidelity premium after each completed uninterrupted year', () => {

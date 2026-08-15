@@ -58,9 +58,9 @@ function dateAfterCalendarYears(date, years) {
 }
 
 /** Finds when net CSH2 catches a savings account whose fidelity premium vests after each uninterrupted year. */
-export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { minimumProjectionDays = 0, maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
   const totalAnnualRatePercent = baseAnnualRatePercent + fidelityPremiumPercent;
-  if (![csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || baseAnnualRatePercent <= -100 || fidelityPremiumPercent < 0 || totalAnnualRatePercent <= -100) return undefined;
+  if (![csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, minimumProjectionDays, maximumProjectionDays].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || baseAnnualRatePercent <= -100 || fidelityPremiumPercent < 0 || totalAnnualRatePercent <= -100 || minimumProjectionDays < 0 || maximumProjectionDays < minimumProjectionDays) return undefined;
   let completedYears = 0;
   let periodStartDay = 0;
   let periodEndDay = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, 1));
@@ -73,13 +73,54 @@ export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnua
     const periodDays = periodEndDay - periodStartDay;
     const daysIntoFidelityPeriod = day - periodStartDay;
     return (1 + totalAnnualRatePercent / 100) ** completedYears * (1 + baseAnnualRatePercent / 100) ** (daysIntoFidelityPeriod / periodDays);
-  });
+  }, minimumProjectionDays);
 }
 
-function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, targetValue) {
+/** Separates a possible base-rate match before the first fidelity award from the first match afterward. */
+export function estimateSavingsAccountRateMatches(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+  const firstFidelityDays = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, 1));
+  const sharedOptions = { applyReyndersTax };
+  const afterFidelity = maximumProjectionDays >= firstFidelityDays
+    ? estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, {
+      ...sharedOptions,
+      minimumProjectionDays: firstFidelityDays,
+      maximumProjectionDays
+    })
+    : undefined;
+  let fidelityMatchWindow;
+  if (afterFidelity) {
+    let nextAwardNumber = 1;
+    let nextAwardDate = dateAfterCalendarYears(valuationDate, nextAwardNumber);
+    while (daysBetween(valuationDate, nextAwardDate) <= afterFidelity.days) {
+      nextAwardNumber += 1;
+      nextAwardDate = dateAfterCalendarYears(valuationDate, nextAwardNumber);
+    }
+    const previousAwardNumber = nextAwardNumber - 1;
+    const previousAwardDate = dateAfterCalendarYears(valuationDate, previousAwardNumber);
+    fidelityMatchWindow = {
+      previousAwardNumber,
+      previousAwardDate,
+      daysAfterPreviousAward: daysBetween(previousAwardDate, afterFidelity.date),
+      nextAwardNumber,
+      nextAwardDate,
+      daysBeforeNextAward: daysBetween(afterFidelity.date, nextAwardDate)
+    };
+  }
+  return {
+    firstFidelityDays,
+    beforeFidelity: estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, {
+      ...sharedOptions,
+      maximumProjectionDays: Math.min(maximumProjectionDays, firstFidelityDays - 1)
+    }),
+    afterFidelity,
+    fidelityMatchWindow
+  };
+}
+
+function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, targetValue, minimumProjectionDays = 0) {
   const dailyGrowthFactor = (1 + csh2AnnualRatePercent / 100) ** (1 / 365);
   const gainTaxRate = applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE;
-  for (let day = 0; day <= maximumProjectionDays; day += 1) {
+  for (let day = minimumProjectionDays; day <= maximumProjectionDays; day += 1) {
     const priceFactor = dailyGrowthFactor ** day;
     const gross = (1 - TOB_RATE) * priceFactor;
     const gain = Math.max(0, (1 - TOB_RATE) * (priceFactor - 1));
