@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { assessCurrentRateModelHealth, assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -103,12 +103,12 @@ test('rejects marking an outflow as an interest payment', () => {
   ], prices, '2026-03-02'), /Only an inflow/);
 });
 
-test('compares moving now with waiting for a future interest payout using the recent CSH2 trend', () => {
+test('compares moving now with waiting for a future interest payout using the selected CSH2 rate', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
-  const assessment = assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 50);
+  const assessment = assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 50, { csh2AnnualRatePercent: 100 });
   assert.equal(assessment.preferred, 'move now');
   assert.ok(assessment.immediateValue > assessment.waitingValue);
-  assert.equal(assessment.trendDays, 59);
+  assert.equal(assessment.csh2AnnualRatePercent, 100);
   assert.equal(assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '', 0), undefined);
   assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 0), /positive amount/);
   assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-03-02', 50), /must be after/);
@@ -117,7 +117,7 @@ test('compares moving now with waiting for a future interest payout using the re
 test('projects all cumulative-return series to a future interest payout', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
-  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, {});
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}, { csh2AnnualRatePercent: 8 });
 
   assert.ok(projection);
   assert.equal(projection.csh2[0].date, '2026-03-02');
@@ -131,32 +131,48 @@ test('projects all cumulative-return series to a future interest payout', () => 
     { date: '2026-04-02', value: 5 }
   ]);
   assert.equal(projection.overnightRatePercent, 3);
-  assert.equal(projection.trendDays, 59);
+  assert.equal(projection.csh2AnnualRatePercent, 8);
 });
 
 test('treats unpaid accrued interest as part of the future payout rather than adding it twice', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
-  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, { unpaidAccruedInterest: 25 });
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, { unpaidAccruedInterest: 25 }, { csh2AnnualRatePercent: 8 });
 
   assert.deepEqual(projection.account, [
     { date: '2026-03-02', value: 2.5 },
     { date: '2026-04-02', value: 5 }
   ]);
   assert.throws(
-    () => buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 20, { unpaidAccruedInterest: 25 }),
+    () => buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 20, { unpaidAccruedInterest: 25 }, { csh2AnnualRatePercent: 8 }),
     /cannot be smaller/
   );
   assert.throws(
-    () => assessInterestPayoutTiming(flows, prices, '2026-03-02', { unpaidAccruedInterest: 25 }, '2026-04-02', 20),
+    () => assessInterestPayoutTiming(flows, prices, '2026-03-02', { unpaidAccruedInterest: 25 }, '2026-04-02', 20, { csh2AnnualRatePercent: 8 }),
     /cannot be smaller/
   );
 });
 
-test('omits the combined projection when a comparable market assumption is unavailable', () => {
+test('omits the combined projection when a selected CSH2 rate or overnight starting point is unavailable', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
-  assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
-  assert.equal(buildReturnProjection(flows, { '2026-03-02': 120 }, { '2026-03-02': 3 }, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
+  assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}, { csh2AnnualRatePercent: 8 }), undefined);
+  assert.equal(buildReturnProjection(flows, prices, { '2026-03-02': 3 }, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
+});
+
+test('projects from the latest real CSH2 quote at the selected annual rate, not its recent path', () => {
+  const flows = [{ date: '2026-03-02', type: 'inflow', amount: 1000 }];
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const assumedRate = { csh2AnnualRatePercent: 8 };
+  const rising = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-03-02', '2026-04-02', 50, {}, assumedRate);
+  const falling = buildReturnProjection(flows, {
+    '2026-01-02': 240,
+    '2026-02-02': 180,
+    '2026-03-02': 120
+  }, rates, '2026-03-02', '2026-03-02', '2026-04-02', 50, {}, assumedRate);
+
+  assert.ok(rising);
+  assert.ok(falling);
+  assert.equal(rising.csh2.at(-1).value, falling.csh2.at(-1).value);
 });
 
 test('calculates missed earnings percentage from net cash input in whole-share mode', () => {
@@ -169,33 +185,32 @@ test('calculates missed earnings percentage from net cash input in whole-share m
   assert.equal(result.missedSharePercent.toFixed(6), '2.828000');
 });
 
-test('estimates a break-even date from a positive 30-day CSH2 price trend', () => {
+test('estimates a break-even date from a positive selected CSH2 rate', () => {
   const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
     '2026-01-01': 100,
     '2026-01-31': 100.2
-  }, '2026-01-31');
+  }, '2026-01-31', {}, { csh2AnnualRatePercent: 3 });
   assert.ok(estimate);
   assert.ok(estimate.date > '2026-01-31');
   assert.ok(estimate.days <= 36525);
-  assert.equal(estimate.trendDays, 30);
-  assert.ok(estimate.trendReturnPercent > 0);
+  assert.equal(estimate.csh2AnnualRatePercent, 3);
 });
 
 test('estimates a break-even date beyond one year when the price trend remains positive', () => {
   const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
     '2026-01-01': 100,
     '2026-01-31': 100.01
-  }, '2026-01-31');
+  }, '2026-01-31', {}, { csh2AnnualRatePercent: 0.1 });
   assert.ok(estimate);
   assert.ok(estimate.days > 365);
   assert.ok(estimate.days <= 36525);
 });
 
-test('does not estimate break-even without a positive 30-day CSH2 price trend', () => {
+test('does not estimate break-even without a positive selected CSH2 rate', () => {
   const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
     '2026-01-01': 100,
     '2026-01-31': 100
-  }, '2026-01-31');
+  }, '2026-01-31', {}, { csh2AnnualRatePercent: 0 });
   assert.equal(estimate, undefined);
 });
 
@@ -209,10 +224,10 @@ test('estimates investment-agnostic holding periods from constant current rates'
   assert.equal(cgt.rateDate, '2026-01-30');
   assert.equal(cgt.trendDays, 30);
   assert.equal(cgt.overnightRatePercent, 3);
-  assert.ok(cgt.observedCsh2AnnualRatePercent > cgt.observedOvernightAnnualRatePercent);
   assert.ok(cgt.csh2ExcessAnnualRatePercent > 0);
   assert.ok(cgt.breakEven.days > 0);
   assert.ok(cgt.matchOvernight.days > cgt.breakEven.days);
+  assert.deepEqual(cgt.breakEvenRange, { earliest: cgt.breakEven, central: cgt.breakEven, latest: cgt.breakEven });
   assert.ok(reynders.breakEven.days > cgt.breakEven.days);
   assert.ok(reynders.matchOvernight.days > cgt.matchOvernight.days);
   assert.deepEqual(
@@ -233,16 +248,50 @@ test('combines current overnight rate with CSH2 excess over the same trailing wi
   }, {
     '2026-01-01': 2,
     '2026-04-01': 3
-  }, '2026-04-01');
+  }, '2026-04-01', { lookbackDays: 90 });
 
   assert.ok(estimate);
   assert.equal(estimate.trendDays, 90);
   assert.equal(estimate.trendStartDate, '2026-01-01');
-  assert.ok(Math.abs(estimate.observedCsh2AnnualRatePercent - 4) < 1e-10);
-  assert.ok(Math.abs(estimate.observedOvernightAnnualRatePercent - (historicalOvernightAnnualFactor - 1) * 100) < 1e-10);
   assert.ok(Math.abs(estimate.currentOvernightAnnualRatePercent - (currentOvernightAnnualFactor - 1) * 100) < 1e-10);
   assert.ok(Math.abs(estimate.csh2AnnualRatePercent - (expectedCsh2AnnualFactor - 1) * 100) < 1e-10);
-  assert.ok(estimate.csh2AnnualRatePercent > estimate.observedCsh2AnnualRatePercent);
+  assert.ok(Math.abs(estimate.csh2ExcessAnnualRatePercent - (observedCsh2AnnualFactor / historicalOvernightAnnualFactor - 1) * 100) < 1e-10);
+});
+
+test('calculates the regression model and annual MAE periods dynamically from published history', async () => {
+  const [priceEnvelope, rateEnvelope] = await Promise.all([
+    readFile(new URL('../src/assets/data/csh2-prices.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../src/assets/data/overnight-rates.json', import.meta.url), 'utf8').then(JSON.parse)
+  ]);
+  const model = calculateCurrentRateModel(priceEnvelope.prices, rateEnvelope.rates, '9999-12-31');
+
+  assert.ok(model);
+  assert.equal(model.trendDays <= 180, true);
+  assert.equal(model.trendDays >= 175, true);
+  assert.ok(model.trendObservations > 100);
+  assert.equal(model.trendExamples.length, 5);
+  assert.equal(model.trendExamplesOmitted, true);
+  assert.equal(model.trendExamples[0].csh2Index, 100);
+  assert.equal(model.trendExamples[0].overnightBenchmarkIndex, 100);
+  assert.ok(model.modelErrorAnnualRatePercent > 0);
+  assert.ok(model.errorWindows.length > 5);
+  assert.equal(model.errorWindows.at(-1).fullHistory, true);
+  assert.deepEqual(model.errorWindows.filter(({ rollingYears }) => rollingYears).map(({ rollingYears }) => rollingYears), [1, 2, 3]);
+  const annualWindows = model.errorWindows.filter(({ rollingYears, fullHistory }) => !rollingYears && !fullHistory);
+  for (let index = 1; index < annualWindows.length; index += 1) {
+    assert.ok(annualWindows[index - 1].from > annualWindows[index].to);
+  }
+  assert.ok(model.errorWindows.every(({ maeAnnualRatePercent, observations }) => maeAnnualRatePercent > 0 && observations > 0));
+  assert.ok(model.csh2AnnualRateLowPercent < model.csh2AnnualRatePercent);
+  assert.ok(model.csh2AnnualRateHighPercent > model.csh2AnnualRatePercent);
+  assert.equal(model.csh2AnnualRateLowPercent, model.csh2AnnualRatePercent - model.modelErrorAnnualRatePercent);
+  assert.equal(model.csh2AnnualRateHighPercent, model.csh2AnnualRatePercent + model.modelErrorAnnualRatePercent);
+
+  const health = assessCurrentRateModelHealth(priceEnvelope.prices, rateEnvelope.rates, model.valuationDate);
+  assert.equal(health.healthy, true, health.issues.join(' '));
+  const forcedFailure = assessCurrentRateModelHealth(priceEnvelope.prices, rateEnvelope.rates, model.valuationDate, { maximumValidationMaePercent: 0 });
+  assert.equal(forcedFailure.healthy, false);
+  assert.match(forcedFailure.issues.join(' '), /Validation MAE/);
 });
 
 test('does not estimate current-rate holding periods without both market rates', () => {
@@ -298,6 +347,29 @@ test('finds the first re-match after the fidelity premium overtakes CSH2', () =>
     nextAwardDate: '2028-01-01',
     daysBeforeNextAward: 730 - matches.afterFidelity.days
   });
+});
+
+test('builds current-rate evolution and records fidelity-driven re-matches', () => {
+  const evolution = buildCurrentRateEvolution(5.3, 3, '2026-01-01', {
+    baseAnnualRatePercent: 3,
+    fidelityPremiumPercent: 2,
+    maximumProjectionDays: 730
+  });
+
+  assert.ok(evolution);
+  assert.equal(evolution.points[0].day, 0);
+  assert.equal(evolution.points[0].breakEven, 100);
+  assert.ok(evolution.points[0].csh2 < 100);
+  assert.ok(evolution.matches.breakEven.length, 1);
+  assert.ok(evolution.matches.overnight.length, 1);
+  assert.ok(evolution.matches.account.length >= 2);
+  assert.ok(evolution.matches.account[0].day < 365);
+  assert.ok(evolution.matches.account[1].day > 365);
+  assert.ok(evolution.points.some((point) => point.day === 365));
+  assert.deepEqual(evolution.matchingIntervals.account, [
+    { startDay: evolution.matches.account[0].day, endDay: 365 },
+    { startDay: evolution.matches.account[1].day, endDay: 730 }
+  ]);
 });
 
 test('reports a marginal re-match relative to the next fidelity premium', () => {

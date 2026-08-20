@@ -1,4 +1,4 @@
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
+import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 
@@ -10,6 +10,13 @@ function options(settings: CalculationSettings) {
     unpaidAccruedInterest: Number(settings.unpaidAccruedInterest || 0),
     brokerTransactionFee: Number(settings.brokerTransactionFee || 0)
   };
+}
+
+function scenarioRate(model: ReturnType<typeof calculateCurrentRateModel>, scenario: CalculationSettings['csh2RateScenario']) {
+  if (!model) return undefined;
+  if (scenario === 'cautious') return model.csh2AnnualRateLowPercent;
+  if (scenario === 'optimistic') return model.csh2AnnualRateHighPercent;
+  return model.csh2AnnualRatePercent;
 }
 
 export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView {
@@ -31,6 +38,9 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   const valuationDate = latestAvailablePriceDate(market.data.prices, today);
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
   const calculationOptions = options(settings);
+  const currentRateModel = calculateCurrentRateModel(market.data.prices, market.rateData.rates, valuationDate);
+  const csh2AnnualRatePercent = scenarioRate(currentRateModel, settings.csh2RateScenario);
+  const projectionAssumption = { csh2AnnualRatePercent };
   const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions);
   const overnight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
   const simulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions);
@@ -42,11 +52,11 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
       : {}
   } as BacktestResult;
   result.interestPayoutAssessment = hasPayoutDate
-    ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, interestPayoutAmount) as BacktestResult['interestPayoutAssessment']
+    ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, interestPayoutAmount, projectionAssumption) as BacktestResult['interestPayoutAssessment']
     : undefined;
-  result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions);
+  result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption);
   const projected = hasPayoutDate
-    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, interestPayoutAmount, calculationOptions)
+    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, interestPayoutAmount, calculationOptions, projectionAssumption)
     : undefined;
   return {
     result,

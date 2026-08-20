@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "refresh-data": "node scripts/refresh-static-data.mjs",
-    "refresh-csh2": "node scripts/refresh-static-data.mjs --csh2",
-    "refresh-overnight-rates": "node scripts/refresh-static-data.mjs --overnight-rates",
+    "check-current-rate-model": "node scripts/check-current-rate-model.mjs",
+    "refresh-data": "node scripts/refresh-static-data.mjs && npm run check-current-rate-model",
+    "refresh-csh2": "node scripts/refresh-static-data.mjs --csh2 && npm run check-current-rate-model",
+    "refresh-overnight-rates": "node scripts/refresh-static-data.mjs --overnight-rates && npm run check-current-rate-model",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",

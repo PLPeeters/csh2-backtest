@@ -1,90 +1,151 @@
 <script lang="ts">
-  import { estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from '../../backtest.mjs';
+  import { onDestroy } from 'svelte';
+  import { buildCurrentRateEvolution, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from '../../backtest.mjs';
   import type { BacktestController } from '../state/backtest.svelte';
+  import type { MinimumHoldingPeriodRange } from '../types';
   import { date, duration, percent } from '../services/formatters';
-  import LineChart from './LineChart.svelte';
+  import HoldingPeriodChart from './HoldingPeriodChart.svelte';
+  import HoldingPeriodEvolutionChart from './HoldingPeriodEvolutionChart.svelte';
 
   let { controller }: { controller: BacktestController } = $props();
   let methodologyDialog = $state<HTMLDialogElement>();
-  const precisePercent = (value: number) => value.toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-  const longDate = (value: string) => date.format(new Date(`${value}T00:00:00Z`));
-  const ordinal = (value: number) => {
-    if (value === 1) return 'first';
-    if (value === 2) return 'second';
-    if (value === 3) return 'third';
-    const remainder = value % 100;
-    if (remainder >= 11 && remainder <= 13) return `${value}th`;
-    return `${value}${value % 10 === 1 ? 'st' : value % 10 === 2 ? 'nd' : value % 10 === 3 ? 'rd' : 'th'}`;
+  let scrollLock: { document: Document; documentOverflow: string; bodyOverflow: string } | undefined;
+  let rateEstimateLabel = $derived(controller.settings.csh2RateScenario);
+  const unlockPageScroll = () => {
+    if (!scrollLock) return;
+    scrollLock.document.documentElement.style.overflow = scrollLock.documentOverflow;
+    scrollLock.document.body.style.overflow = scrollLock.bodyOverflow;
+    scrollLock = undefined;
   };
-  const periods = { '1m': { label: '1M', description: '1 month' }, '3m': { label: '3M', description: '3 months' }, '6m': { label: '6M', description: '6 months' }, '1y': { label: '1Y', description: '1 year' }, '2y': { label: '2Y', description: '2 years' }, '5y': { label: '5Y', description: '5 years' } } as const;
-  let period = $derived(controller.direction === 'backward' ? controller.backwardPeriod : controller.forwardPeriod);
-  let benchmarkUsesReyndersTax = $derived(controller.settings.applyReyndersTax);
+  const openMethodology = () => {
+    methodologyDialog?.showModal();
+    const document = methodologyDialog?.ownerDocument;
+    if (!document) return;
+    scrollLock = { document, documentOverflow: document.documentElement.style.overflow, bodyOverflow: document.body.style.overflow };
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  };
+  const closeMethodology = () => methodologyDialog?.close();
+  onDestroy(unlockPageScroll);
+  const precisePercent = (value: number) => value.toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const indexedValue = (value: number) => value.toLocaleString('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signedPercent = (value: number) => `${value > 0 ? '+' : ''}${percent(value)}%`;
+  const longDate = (value: string) => date.format(new Date(`${value}T00:00:00Z`));
+  const shortDate = (value: string) => new Intl.DateTimeFormat('en-BE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  const roundedProjectionHorizon = (latestMilestoneDays: number) => {
+    const paddedDays = Math.max(365, Math.ceil(latestMilestoneDays * 1.15));
+    const roughStep = paddedDays / 4;
+    const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+    const normalized = roughStep / magnitude;
+    const tickStep = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+    return Math.min(36525, Math.ceil(paddedDays / tickStep) * tickStep);
+  };
+  const selectedHoldingPeriod = (range?: MinimumHoldingPeriodRange) => range?.[controller.settings.csh2RateScenario === 'cautious' ? 'latest' : controller.settings.csh2RateScenario === 'optimistic' ? 'earliest' : 'central'];
+  const holdingPeriodText = (valuationDate: string, range?: MinimumHoldingPeriodRange) => {
+    const selected = selectedHoldingPeriod(range);
+    return selected ? duration(valuationDate, selected.date) : 'More than 100 years';
+  };
   let holdingPeriods = $derived(controller.benchmark?.holdingPeriods[controller.settings.applyReyndersTax ? 'reynders' : 'cgt']);
   let accountRateIsEntered = $derived(controller.settings.accountBaseInterestRate !== '' || controller.settings.accountFidelityPremium !== '');
   let accountBaseRate = $derived(Number(controller.settings.accountBaseInterestRate || 0));
   let accountFidelityPremium = $derived(Number(controller.settings.accountFidelityPremium || 0));
   let accountRateIsValid = $derived(Number.isFinite(accountBaseRate) && accountBaseRate > -100 && Number.isFinite(accountFidelityPremium) && accountFidelityPremium >= 0 && accountBaseRate + accountFidelityPremium > -100);
+  let selectedCsh2Rate = $derived(holdingPeriods?.[controller.settings.csh2RateScenario === 'cautious' ? 'csh2AnnualRateLowPercent' : controller.settings.csh2RateScenario === 'optimistic' ? 'csh2AnnualRateHighPercent' : 'csh2AnnualRatePercent']);
   let accountMatches = $derived(holdingPeriods && accountRateIsValid && accountFidelityPremium > 0
-    ? estimateSavingsAccountRateMatches(holdingPeriods.csh2AnnualRatePercent, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+    ? estimateSavingsAccountRateMatches(selectedCsh2Rate!, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
     : undefined);
   let matchAccount = $derived(accountMatches
     ? accountMatches.beforeFidelity ?? accountMatches.afterFidelity
     : holdingPeriods && accountRateIsValid
-      ? estimateSavingsAccountRateMatch(holdingPeriods.csh2AnnualRatePercent, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+      ? estimateSavingsAccountRateMatch(selectedCsh2Rate!, accountBaseRate, accountFidelityPremium, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
       : undefined);
-  let accountMatchTiming = $derived(accountMatches?.beforeFidelity
-    ? accountMatches.afterFidelity?.days === accountMatches.firstFidelityDays
-      ? 'Before the first fidelity premium · Still ahead after it.'
-      : accountMatches.afterFidelity && accountMatches.fidelityMatchWindow
-        ? (() => {
-          const window = accountMatches.fidelityMatchWindow;
-          return window.daysAfterPreviousAward <= window.daysBeforeNextAward
-            ? `Before the first fidelity premium · First re-match: ${duration(window.previousAwardDate, accountMatches.afterFidelity.date)} after the ${ordinal(window.previousAwardNumber)} fidelity premium.`
-            : `Before the first fidelity premium · First re-match: ${duration(accountMatches.afterFidelity.date, window.nextAwardDate)} before the ${ordinal(window.nextAwardNumber)} fidelity premium.`;
-        })()
-        : 'Before the first fidelity premium · No re-match within 100 years.'
-    : accountMatches
-      ? 'Includes vested fidelity premiums.'
-      : '');
-  let selectedSeries = $derived(controller.benchmark?.[controller.benchmarkAfterTax ? benchmarkUsesReyndersTax ? 'reynders' : 'cgt' : 'gross']?.[controller.direction === 'backward' ? 'lookback' : 'forward']?.[period as '1y']);
+  let breakEvenPeriod = $derived(selectedHoldingPeriod(holdingPeriods?.breakEvenRange));
+  let overnightMatchPeriod = $derived(selectedHoldingPeriod(holdingPeriods?.matchOvernightRange));
+  let breakEvenLabel = $derived(holdingPeriods ? holdingPeriodText(holdingPeriods.valuationDate, holdingPeriods.breakEvenRange) : 'Unavailable');
+  let accountMatchLabel = $derived(!accountRateIsEntered ? 'Enter your account rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount && holdingPeriods ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years');
+  let overnightMatchLabel = $derived(holdingPeriods ? holdingPeriodText(holdingPeriods.valuationDate, holdingPeriods.matchOvernightRange) : 'Unavailable');
+  let projectionHorizonDays = $derived(roundedProjectionHorizon(Math.max(
+    breakEvenPeriod?.days ?? 0,
+    overnightMatchPeriod?.days ?? 0,
+    matchAccount?.days ?? 0,
+    accountMatches?.afterFidelity?.days ?? 0
+  )));
+  let currentRateEvolution = $derived(holdingPeriods && selectedCsh2Rate !== undefined
+    ? buildCurrentRateEvolution(selectedCsh2Rate, holdingPeriods.overnightRatePercent, holdingPeriods.valuationDate, {
+      baseAnnualRatePercent: accountRateIsEntered && accountRateIsValid ? accountBaseRate : undefined,
+      fidelityPremiumPercent: accountRateIsEntered && accountRateIsValid ? accountFidelityPremium : undefined,
+      maximumProjectionDays: projectionHorizonDays,
+      applyReyndersTax: controller.settings.applyReyndersTax
+    })
+    : undefined);
+  let breakEvenMatches = $derived(currentRateEvolution && holdingPeriods ? currentRateEvolution.matches.breakEven.map((match: { date: string; day: number }) => ({ days: match.day, label: duration(holdingPeriods.valuationDate, match.date) })) : []);
+  let accountEvolutionMatches = $derived(currentRateEvolution && holdingPeriods ? currentRateEvolution.matches.account.map((match: { date: string; day: number }) => ({ days: match.day, label: duration(holdingPeriods.valuationDate, match.date) })) : []);
+  let overnightMatches = $derived(currentRateEvolution && holdingPeriods ? currentRateEvolution.matches.overnight.map((match: { date: string; day: number }) => ({ days: match.day, label: duration(holdingPeriods.valuationDate, match.date) })) : []);
+  let holdingPeriodMilestones = $derived([
+    { name: 'Break even', label: breakEvenLabel, matches: breakEvenMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.breakEven, kind: 'break-even' as const },
+    { name: 'Match your account', label: accountMatchLabel, matches: accountEvolutionMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.account, kind: 'account' as const },
+    { name: 'Match €STR', label: overnightMatchLabel, matches: overnightMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.overnight, kind: 'overnight' as const }
+  ]);
+  let evolutionMarkers = $derived(currentRateEvolution ? [
+    ...currentRateEvolution.matches.breakEven.map((match: { date: string; day: number }) => ({ day: match.day, label: 'Break even', kind: 'break-even' as const })),
+    ...currentRateEvolution.matches.overnight.map((match: { date: string; day: number }, index: number) => ({ day: match.day, label: duration(holdingPeriods!.valuationDate, match.date), markerText: index ? 'Re-match €STR' : 'Match €STR', kind: 'overnight' as const })),
+  ] : []);
 </script>
 
 <section class="benchmark-section" aria-labelledby="holding-period-heading">
   <div class="section-title current-rate-heading">
-    <div><p class="eyebrow">Current-rate estimate</p><h2 id="holding-period-heading">Minimum holding periods</h2>{#if holdingPeriods}<p class="current-rate-summary" aria-label="Current rates used"><span>Current €STR <strong>{percent(holdingPeriods.overnightRatePercent)}%</strong></span><span class="estimated-rate">Estimated CSH2 <strong>{percent(holdingPeriods.csh2AnnualRatePercent)}%</strong><span class="methodology-trigger"><button type="button" class="methodology-info" aria-label="How estimated CSH2 is calculated" aria-haspopup="dialog" onclick={() => methodologyDialog?.showModal()}>i</button><span class="methodology-tooltip" role="tooltip">Click for methodology</span></span></span></p>{/if}</div>
+    <div><p class="eyebrow">Current-rate estimate</p><h2 id="holding-period-heading">Minimum holding periods</h2>{#if holdingPeriods}<p class="current-rate-summary" aria-label="Current rates used"><span>Current €STR <strong>{percent(holdingPeriods.overnightRatePercent)}%</strong></span><span class="estimated-rate">Estimated CSH2 <strong class="estimated-rate-value"><span class="estimated-rate-point">{percent(holdingPeriods.csh2AnnualRatePercent)}%</span>{#if holdingPeriods.modelErrorAnnualRatePercent !== undefined}<span class="estimated-rate-error">±{percent(holdingPeriods.modelErrorAnnualRatePercent)} pp</span>{/if}</strong><span class="methodology-trigger"><button type="button" class="methodology-info" aria-label="How estimated CSH2 is calculated" aria-haspopup="dialog" onclick={openMethodology}>i</button><span class="methodology-tooltip" role="tooltip">Click for methodology</span></span></span></p>{/if}</div>
     <div class="benchmark-account-rate"><div class="benchmark-account-rate-fields"><label class="account-interest-rate">Base annual rate (%)<input type="number" min="-99.99" step="0.01" placeholder="e.g. 0.50" value={controller.settings.accountBaseInterestRate} oninput={(event) => controller.updateSetting('accountBaseInterestRate', event.currentTarget.value)} /></label><label class="account-interest-rate">Fidelity premium (%)<input type="number" min="0" step="0.01" placeholder="e.g. 1.50" value={controller.settings.accountFidelityPremium} oninput={(event) => controller.updateSetting('accountFidelityPremium', event.currentTarget.value)} /></label></div>
     </div>
   </div>
   {#if holdingPeriods}
-    <div class="metric-row metric-row-details benchmark-holding-periods"><article class="metric"><p>Time to break even at current rates</p><strong>{holdingPeriods.breakEven ? duration(holdingPeriods.valuationDate, holdingPeriods.breakEven.date) : 'More than 100 years'}</strong><small>Assumes CSH2 stays at its estimated current rate of {percent(holdingPeriods.csh2AnnualRatePercent)}%.</small></article><article class="metric"><p>Time to match your account rate at current rates</p><strong>{!accountRateIsEntered ? 'Enter your account rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years'}</strong><small>{!accountRateIsEntered ? 'Add the base rate and fidelity premium above.' : !accountRateIsValid ? 'The base rate must exceed -100% and the fidelity premium cannot be negative.' : ''}{#if accountRateIsEntered && accountRateIsValid}{#if accountMatchTiming}<span class="account-match-timing">{accountMatchTiming}</span>{/if}<span>Assumes a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</small></article><article class="metric"><p>Time to match €STR at current rates</p><strong>{holdingPeriods.matchOvernight ? duration(holdingPeriods.valuationDate, holdingPeriods.matchOvernight.date) : 'More than 100 years'}</strong><small>Assumes estimated CSH2 stays at {percent(holdingPeriods.csh2AnnualRatePercent)}% and published €STR stays at {percent(holdingPeriods.overnightRatePercent)}%.</small></article></div>
-    <p class="chart-explanation holding-period-explanation">Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.</p>
+    <div class="holding-period-summary"><HoldingPeriodChart milestones={holdingPeriodMilestones} maximumDays={currentRateEvolution?.maximumProjectionDays ?? projectionHorizonDays} /></div>
+    <p class="chart-explanation holding-period-explanation">At the {rateEstimateLabel} estimated CSH2 rate. Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.{#if accountRateIsEntered && accountRateIsValid}<span class="account-assumption">Your account uses a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</p>
   {:else if controller.benchmarkStatus.kind === 'success'}
     <p class="chart-explanation holding-period-explanation">Current-rate holding periods are unavailable because comparable recent CSH2 or overnight-rate data is missing.</p>
   {/if}
 
   {#if holdingPeriods}
-    <dialog class="methodology-dialog" bind:this={methodologyDialog} aria-labelledby="methodology-title" aria-describedby="methodology-intro" onclick={(event) => { if (event.target === methodologyDialog) methodologyDialog?.close(); }} oncancel={(event) => { event.preventDefault(); methodologyDialog?.close(); }}>
-      <div class="methodology-dialog-header"><div><p class="eyebrow">Current-rate estimate</p><h3 id="methodology-title">How the estimated CSH2 rate is calculated</h3></div><button type="button" class="methodology-close" aria-label="Close methodology" onclick={() => methodologyDialog?.close()}>×</button></div>
-      <p id="methodology-intro">The estimate keeps today’s published €STR rate, while using recent market data only to estimate CSH2’s excess return over €STR. Both historical returns use the same dates, so past rate changes largely cancel.</p>
-      <ol class="methodology-steps">
-        <li><strong>Match the historical window.</strong><span>{longDate(holdingPeriods.trendStartDate)} to {longDate(holdingPeriods.valuationDate)} ({holdingPeriods.trendDays} calendar days).</span></li>
-        <li><strong>Annualize CSH2’s price return.</strong><span>The observed closing-price return becomes <b>{precisePercent(holdingPeriods.observedCsh2AnnualRatePercent)}%</b> per year.</span></li>
-        <li><strong>Compound €STR over those same dates.</strong><span>Using each published rate with Actual/360 produces <b>{precisePercent(holdingPeriods.observedOvernightAnnualRatePercent)}%</b> annualized.</span></li>
-        <li><strong>Calculate CSH2’s relative excess.</strong><span class="methodology-equation"><span class="fraction" aria-hidden="true"><span>1 + {precisePercent(holdingPeriods.observedCsh2AnnualRatePercent)}%</span><span>1 + {precisePercent(holdingPeriods.observedOvernightAnnualRatePercent)}%</span></span><span aria-hidden="true"> − 1 = <b>{precisePercent(holdingPeriods.csh2ExcessAnnualRatePercent)}%</b></span><span class="sr-only">(1 plus {precisePercent(holdingPeriods.observedCsh2AnnualRatePercent)} percent) divided by (1 plus {precisePercent(holdingPeriods.observedOvernightAnnualRatePercent)} percent), minus 1, equals {precisePercent(holdingPeriods.csh2ExcessAnnualRatePercent)} percent.</span></span></li>
-        <li><strong>Apply that excess to current €STR.</strong><span>The published rate on {longDate(holdingPeriods.rateDate)} is <b>{precisePercent(holdingPeriods.overnightRatePercent)}%</b>. Daily Actual/360 compounding makes that <b>{precisePercent(holdingPeriods.currentOvernightAnnualRatePercent)}%</b> effective annually.</span></li>
-      </ol>
-      <p class="methodology-result"><span>Estimated current CSH2</span><strong>(1 + {precisePercent(holdingPeriods.currentOvernightAnnualRatePercent)}%) × (1 + {precisePercent(holdingPeriods.csh2ExcessAnnualRatePercent)}%) − 1 = {precisePercent(holdingPeriods.csh2AnnualRatePercent)}%</strong></p>
-      <p class="methodology-caveat">This is a mechanical estimate, not a forecast. It assumes the observed CSH2 excess persists and remains sensitive to market closing-price noise.</p>
+    <dialog class="methodology-dialog" bind:this={methodologyDialog} aria-labelledby="methodology-title" aria-describedby="methodology-intro" onclick={(event) => { if (event.target === methodologyDialog) closeMethodology(); }} oncancel={(event) => { event.preventDefault(); closeMethodology(); }} onclose={unlockPageScroll}>
+      <div class="methodology-dialog-header"><div><p class="eyebrow">Current-rate estimate</p><h3 id="methodology-title">How we estimate today’s CSH2 return</h3></div><button type="button" class="methodology-close" aria-label="Close methodology" onclick={closeMethodology}>×</button></div>
+      <div class="methodology-dialog-content">
+        <p id="methodology-intro">CSH2 generally follows the euro overnight rate, but its return also reflects the fund’s costs and tracking performance. We estimate its current annual return by combining today’s €STR with how CSH2 has recently performed relative to that rate.</p>
+        <ol class="methodology-steps">
+        <li><strong>Compare CSH2 with the overnight rate.</strong><span>We use every available CSH2 closing price from the previous 180 calendar days. For an easy comparison, both CSH2 and the compounded overnight benchmark start at 100.</span>
+          {#if holdingPeriods.trendExamples.length}
+            <div class="methodology-example-table-wrap"><table class="methodology-example-table"><thead><tr><th scope="col">Date</th><th scope="col">CSH2</th><th scope="col">Overnight benchmark</th><th scope="col">Gap</th></tr></thead><tbody>{#each holdingPeriods.trendExamples as row, index}{#if holdingPeriods.trendExamplesOmitted && index === 2}<tr class="methodology-example-gap"><td colspan="4"><span aria-hidden="true">…</span><span class="sr-only">Additional daily observations</span></td></tr>{/if}<tr><th scope="row">{shortDate(row.date)}</th><td>{indexedValue(row.csh2Index)}</td><td>{indexedValue(row.overnightBenchmarkIndex)}</td><td>{signedPercent(row.gapPercent)}</td></tr>{/each}</tbody></table></div>
+          {/if}
+        </li>
+        <li><strong>Measure the recent difference.</strong><span>We find the best-fit trend through the gap between CSH2 and the overnight benchmark. This makes the estimate less sensitive to an unusually high or low closing price on a single day.</span></li>
+        <li><strong>Apply it to today’s rate.</strong><span>We combine that recent difference with today’s €STR to estimate CSH2’s current annual return.</span></li>
+        </ol>
+        <dl class="methodology-result"><div><dt>Today’s compounded €STR</dt><dd>{precisePercent(holdingPeriods.currentOvernightAnnualRatePercent)}%</dd></div><div><dt>Recent CSH2 difference</dt><dd>{holdingPeriods.csh2ExcessAnnualRatePercent > 0 ? '+' : ''}{precisePercent(holdingPeriods.csh2ExcessAnnualRatePercent)} pp</dd></div><div class="methodology-result-total"><dt>Estimated CSH2 return</dt><dd>{precisePercent(holdingPeriods.csh2AnnualRatePercent)}%</dd></div></dl>
+        {#if holdingPeriods.errorWindows.length}
+          <section class="methodology-accuracy" aria-labelledby="methodology-accuracy-title">
+          <h4 id="methodology-accuracy-title">How accurate is this methodology when applying it to past data?</h4>
+          <p>Mean absolute error (MAE) is the average size of the difference between an estimate and what CSH2 actually delivered over the following {Math.round(holdingPeriods.errorEvaluationDays / 30)} months. Lower is better.</p>
+          <table><thead><tr><th scope="col">Evaluation period</th><th scope="col">MAE</th></tr></thead><tbody>{#each holdingPeriods.errorWindows.filter((window) => window.rollingYears || window.fullHistory) as window}<tr><th scope="row">{window.rollingYears ? `Last ${window.rollingYears} ${window.rollingYears === 1 ? 'year' : 'years'}` : 'Full history'}</th><td>{percent(window.maeAnnualRatePercent)} pp</td></tr>{/each}</tbody></table>
+          {#if holdingPeriods.errorWindows.some((window) => !window.rollingYears && !window.fullHistory)}
+            <details class="methodology-yearly"><summary>Year-by-year accuracy</summary><table><thead><tr><th scope="col">Evaluation period</th><th scope="col">MAE</th></tr></thead><tbody>{#each holdingPeriods.errorWindows.filter((window) => !window.rollingYears && !window.fullHistory) as window}<tr><th scope="row">{longDate(window.from)} – {longDate(window.to)}</th><td>{percent(window.maeAnnualRatePercent)} pp</td></tr>{/each}</tbody></table></details>
+          {/if}
+          {#if holdingPeriods.errorValidationFrom && holdingPeriods.errorValidationTo && holdingPeriods.modelErrorAnnualRatePercent !== undefined}<p>The ±{percent(holdingPeriods.modelErrorAnnualRatePercent)} pp shown beside the current estimate is the model’s typical error from {longDate(holdingPeriods.errorValidationFrom)} through {longDate(holdingPeriods.errorValidationTo)}. It measures this estimation method, not Amundi’s tracking error. Newer estimates cannot be checked until the following {Math.round(holdingPeriods.errorEvaluationDays / 30)} months have elapsed.</p>{/if}
+          </section>
+        {/if}
+        <p class="methodology-caveat">This is an estimate, not a guaranteed return. The holding-time ranges assume today’s rates remain unchanged.</p>
+      </div>
     </dialog>
   {/if}
 
-  <section class="panel chart-panel benchmark-chart-panel" aria-labelledby="benchmark-heading">
-    <div class="section-title"><div class="benchmark-title"><p class="eyebrow">Underlying benchmark</p><h3 id="benchmark-heading">{controller.direction === 'forward' ? 'Forward' : 'Backward'} annualized returns · {periods[period].label}</h3></div>
-      <div class="benchmark-control"><div class="benchmark-mode-picker" role="group" aria-label="Return direction"><button type="button" aria-pressed={controller.direction === 'backward'} onclick={() => controller.setDirection('backward')}>Backward</button><button type="button" aria-pressed={controller.direction === 'forward'} onclick={() => controller.setDirection('forward')}>Forward</button></div><div class="benchmark-period-picker" role="group" aria-label={`${controller.direction === 'forward' ? 'Forward' : 'Backward'} comparison period`}>{#each (controller.direction === 'backward' ? ['1m','3m','6m','1y','2y','5y'] : ['1m','3m','6m','1y']) as value}<button type="button" aria-pressed={period === value} onclick={() => controller.setPeriod(value as '1y')}>{periods[value as keyof typeof periods].label}</button>{/each}</div><div class="benchmark-tax-picker" role="group" aria-label="Tax treatment"><button type="button" aria-pressed={!controller.benchmarkAfterTax} onclick={() => controller.setBenchmarkAfterTax(false)}>Gross</button><button type="button" aria-pressed={controller.benchmarkAfterTax} onclick={() => controller.setBenchmarkAfterTax(true)}>After tax</button></div></div>
-    </div>
-    <p class="chart-key"><span class="chart-key-csh2">CSH2</span><span class="chart-key-estr">Euro overnight benchmark</span></p>
-    <p class="chart-explanation benchmark-explanation">{controller.direction === 'forward' ? `Each point shows how CSH2 and the euro overnight benchmark performed over the following ${periods[period].description}. Use the date to compare a savings-account rate available then with what actually followed.` : `Each point compares its value with the value ${periods[period].description} earlier and annualizes the return.`}</p>
-    {#if controller.benchmarkAfterTax}<p class="chart-explanation tax-explanation">CSH2 includes buy and sell TOB plus {benchmarkUsesReyndersTax ? '30% Reynders Tax' : '10% CGT from 2026'}, ignoring the annual CGT exemption. The euro overnight benchmark is unchanged.</p>{/if}
-    {#if selectedSeries}<LineChart data={selectedSeries} from={controller.view?.from} to={controller.view?.to} ariaLabel={`${controller.direction === 'forward' ? 'Forward' : 'Backward'} annualized CSH2 return compared with the Euro overnight benchmark over ${periods[period].description}`} />{:else}<p class="chart-loading">{controller.benchmarkStatus.message || 'Preparing benchmark history…'}</p>{/if}
+  {#if holdingPeriods && currentRateEvolution}
+  <section class="panel chart-panel holding-period-chart-panel" aria-labelledby="holding-period-chart-heading">
+    <div class="section-title"><div><p class="eyebrow">Account comparison</p><h3 id="holding-period-chart-heading">CSH2 versus your account</h3></div></div>
+    {#if accountRateIsEntered && accountRateIsValid}
+      <p class="chart-key holding-evolution-key"><span class="chart-key-csh2">Net CSH2 advantage</span><span class="chart-key-account">Your account</span></p>
+      <p class="chart-explanation holding-evolution-explanation">Assuming today’s rates stay constant, the line shows how far net CSH2 is ahead of or behind your account after buy and sell TOB and the selected tax. Arrows mark break-even and Match €STR.</p>
+      <HoldingPeriodEvolutionChart points={currentRateEvolution.points} markers={evolutionMarkers} maximumDays={currentRateEvolution.maximumProjectionDays} valuationDate={holdingPeriods.valuationDate} />
+    {:else}
+      <p class="chart-empty">Enter valid account rates to compare your account with the current CSH2 projection.</p>
+    {/if}
   </section>
+  {/if}
 </section>

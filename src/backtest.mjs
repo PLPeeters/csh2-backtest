@@ -14,7 +14,8 @@ export {
   TOB_RATE
 } from './backtest/shared.mjs';
 export { runBacktest } from './backtest/simulation.mjs';
-export { assessInterestPayoutTiming, buildReturnProjection, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from './backtest/projections.mjs';
+export { assessCurrentRateModelHealth, assertCurrentRateModelHealthy, buildRelativeCsh2Series, calculateCurrentRateModel, CURRENT_RATE_EVALUATION_DAYS, CURRENT_RATE_LOOKBACK_DAYS, CURRENT_RATE_VALIDATION_START, fitRelativeExcess } from './backtest/current-rate.mjs';
+export { assessInterestPayoutTiming, buildCurrentRateEvolution, buildReturnProjection, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from './backtest/projections.mjs';
 export {
   buildAccountReturnSeries,
   buildBacktestReturnSeries,

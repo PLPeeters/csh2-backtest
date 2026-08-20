@@ -28,12 +28,12 @@
     projectedCsh2Series.setData(chartData(projected?.csh2 ?? []));
     projectedOvernightSeries.setData(chartData(projected?.overnight ?? []));
     projectedAccountSeries.setData(chartData(projected?.account ?? []));
-    csh2Series.applyOptions({ lastValueVisible: !projected });
-    overnightSeries.applyOptions({ lastValueVisible: !projected });
-    accountSeries.applyOptions({ lastValueVisible: !projected });
-    projectedCsh2Series.applyOptions({ lastValueVisible: !!projected });
-    projectedOvernightSeries.applyOptions({ lastValueVisible: !!projected });
-    projectedAccountSeries.applyOptions({ lastValueVisible: !!projected });
+    csh2Series.applyOptions({ lastValueVisible: !projected, priceLineVisible: !projected});
+    overnightSeries.applyOptions({ lastValueVisible: !projected, priceLineVisible: !projected});
+    accountSeries.applyOptions({ lastValueVisible: !projected, priceLineVisible: !projected});
+    projectedCsh2Series.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
+    projectedOvernightSeries.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
+    projectedAccountSeries.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
     const all = [...nextData.csh2, ...nextData.overnight, ...account, ...(projected?.csh2 ?? []), ...(projected?.overnight ?? []), ...(projected?.account ?? [])];
     if (visibleFrom && visibleTo && all.some((point) => point.date >= visibleFrom && point.date <= visibleTo)) chart.timeScale().setVisibleRange({ from: visibleFrom as Time, to: visibleTo as Time });
     else chart.timeScale().fitContent();

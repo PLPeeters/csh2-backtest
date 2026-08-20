@@ -18,7 +18,8 @@ export const defaultSettings = (): CalculationSettings => ({
   interestPayoutAmount: '',
   brokerTransactionFee: '0',
   accountBaseInterestRate: '',
-  accountFidelityPremium: ''
+  accountFidelityPremium: '',
+  csh2RateScenario: 'base'
 });
 
 export const blankFlow = (): CashFlowDraft => ({ id: createFlowId(), date: '', type: 'inflow', amount: '', interestPayment: false });
@@ -57,7 +58,10 @@ export function loadStoredState(storage: Storage): StoredState {
     accountBaseInterestRate: typeof candidate.accountBaseInterestRate === 'string' || typeof candidate.accountBaseInterestRate === 'number'
       ? String(candidate.accountBaseInterestRate)
       : typeof candidate.accountInterestRate === 'string' || typeof candidate.accountInterestRate === 'number' ? String(candidate.accountInterestRate) : '',
-    accountFidelityPremium: typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : ''
+    accountFidelityPremium: typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : '',
+    csh2RateScenario: candidate.csh2RateScenario === 'cautious' || candidate.csh2RateScenario === 'optimistic' || candidate.csh2RateScenario === 'base'
+      ? candidate.csh2RateScenario
+      : defaults.csh2RateScenario
   };
   return { flows, settings };
 }

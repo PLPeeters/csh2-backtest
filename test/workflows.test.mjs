@@ -15,9 +15,11 @@ test('schedules €STR refreshes at 09:15 Brussels time', async () => {
 
 test('schedules CSH2 refreshes at midnight Tuesday through Saturday Brussels time', async () => {
   const contents = await workflow('refresh-csh2.yml');
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(contents, /cron: '0 0 \* \* 2-6'/);
   assert.match(contents, /timezone: Europe\/Brussels/);
   assert.match(contents, /npm run refresh-csh2/);
+  assert.match(packageJson.scripts['refresh-csh2'], /check-current-rate-model/);
 });
 
 test('publishes changed refreshes through the reusable Pages workflow', async () => {

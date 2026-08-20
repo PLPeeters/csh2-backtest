@@ -1,4 +1,4 @@
-import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
+import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
 import { blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
@@ -26,7 +26,8 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
     unpaidAccruedInterest: settings.unpaidAccruedInterest,
     interestPayoutDate: settings.interestPayoutDate,
     interestPayoutAmount: settings.interestPayoutAmount,
-    brokerTransactionFee: settings.brokerTransactionFee
+    brokerTransactionFee: settings.brokerTransactionFee,
+    csh2RateScenario: settings.csh2RateScenario
   };
   return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings: calculationSettings });
 }
@@ -105,6 +106,28 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         accountFidelityPremium: settings.accountFidelityPremium
       };
       status = { kind: 'loading', message: 'Updating the backtest tax regime…' };
+      try {
+        const market = await dependencies.loadMarketData();
+        const nextView = dependencies.calculate(recalculatedFlows, recalculatedSettings, market, dependencies.today());
+        if (generation !== requestGeneration) return;
+        view = nextView;
+        submittedFlowsSnapshot = cloneFlows(recalculatedFlows);
+        submittedInputSignature = calculationInputSignature(recalculatedFlows, recalculatedSettings);
+        status = { kind: 'success', message: `Recalculated using the ${nextView.result.valuation.date} close.` };
+      } catch (error) {
+        if (generation !== requestGeneration) return;
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async setCsh2RateScenario(csh2RateScenario: Csh2RateScenario) {
+      if (settings.csh2RateScenario === csh2RateScenario) return;
+      settings.csh2RateScenario = csh2RateScenario;
+      persist();
+      if (!view || !submittedFlowsSnapshot) return;
+      const generation = ++requestGeneration;
+      const recalculatedFlows = cloneFlows(submittedFlowsSnapshot);
+      const recalculatedSettings = { ...view.settings, csh2RateScenario };
+      status = { kind: 'loading', message: 'Updating the CSH2 rate scenario…' };
       try {
         const market = await dependencies.loadMarketData();
         const nextView = dependencies.calculate(recalculatedFlows, recalculatedSettings, market, dependencies.today());
