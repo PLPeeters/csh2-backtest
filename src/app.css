@@ -140,7 +140,6 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .accrued-interest input, .broker-transaction-fee input, .account-interest-rate input { display: block; margin-top: 6px; }
 .setting-field, .setting-card { min-width: 0; }
 .setting-card { border: 1px solid #d8e1db; border-radius: 7px; background: #f8faf8; padding: 16px; }
-.setting-card-wide { grid-column: 1 / -1; }
 .setting-description { margin: 9px 0 0; color: #617169; font-size: .8rem; line-height: 1.45; }
 .action-row { padding-top: 24px; border-top: 1px solid #e3e8e5; }
 .status { min-height: 1.4em; margin: 14px 0 0; color: #627269; font-size: .9rem; }
