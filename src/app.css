@@ -219,7 +219,10 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .holding-period-value.holding-period-break-even { --flag-color: #1d6a54; --flag-background: #edf6f2; }
 .holding-period-value.holding-period-account { --flag-color: #3867a8; --flag-background: #eef3fb; }
 .holding-period-value.holding-period-overnight { --flag-color: #bd842b; --flag-background: #fff6e8; }
-.holding-period-value { position: absolute; bottom: calc(50% + 10px); border: 1px solid var(--flag-color); border-radius: 3px; background: var(--flag-background); padding: 1px 6px; color: var(--flag-color); font-size: .76rem; font-weight: 400; line-height: 1.35; white-space: nowrap; }
+.holding-period-flag-pole.holding-period-break-even { background: #1d6a54; }
+.holding-period-flag-pole.holding-period-account { background: #3867a8; }
+.holding-period-flag-pole.holding-period-overnight { background: #bd842b; }
+.holding-period-value { position: absolute; z-index: 2; bottom: calc(50% + 10px); border: 1px solid var(--flag-color); border-radius: 3px; background: var(--flag-background); padding: 1px 6px; color: var(--flag-color); font-size: .76rem; font-weight: 400; line-height: 1.35; white-space: nowrap; }
 .holding-period-value:not(.faces-left) { border-left-width: 3px; }
 .holding-period-value:not(.below):not(.faces-left) { border-bottom-left-radius: 0; }
 .holding-period-value.below { top: calc(50% + 10px); bottom: auto; }
@@ -227,9 +230,8 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .holding-period-value.faces-left { border-right-width: 3px; transform: translateX(-100%); }
 .holding-period-value:not(.below).faces-left { border-bottom-right-radius: 0; }
 .holding-period-value.below.faces-left { border-top-right-radius: 0; }
-.holding-period-flag-pole { position: absolute; top: calc(100% - 1px); left: -3px; width: 3px; height: calc(var(--flag-offset) + 1px); background: var(--flag-color); pointer-events: none; }
-.holding-period-value.below .holding-period-flag-pole { top: auto; bottom: calc(100% - 1px); }
-.holding-period-value.faces-left .holding-period-flag-pole { right: -3px; left: auto; }
+.holding-period-flag-pole { position: absolute; z-index: 1; top: calc(50% - var(--flag-offset) - 1px); width: 3px; height: calc(var(--flag-offset) + 1px); background: var(--flag-color); pointer-events: none; }
+.holding-period-flag-pole.below { top: 50%; }
 .holding-period-unavailable { position: absolute; top: 50%; left: 8px; color: #77877f; font-size: .78rem; font-style: italic; transform: translateY(-50%); }
 .holding-period-axis-row { align-items: start; }
 .holding-period-axis { position: relative; height: 28px; border-top: 1px solid #aebfb6; }

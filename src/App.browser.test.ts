@@ -113,6 +113,7 @@ describe('CSH2 application inputs', () => {
     const accountTrackBounds = accountRow.querySelector<HTMLElement>('.holding-period-track')!.getBoundingClientRect();
     expect(accountLabels.length).toBe(accountMarkers.length);
     expect(accountPoles.length).toBe(accountMarkers.length);
+    expect(accountLabels[0].classList.contains('below')).toBe(false);
     [...accountLabels].forEach((label, index) => {
       const styles = renderedStyles(label);
       const pole = accountPoles[index];
@@ -123,7 +124,9 @@ describe('CSH2 application inputs', () => {
       expect(styles.backgroundColor).toBe('rgb(238, 243, 251)');
       expect(styles.color).toBe('rgb(56, 103, 168)');
       expect(styles.fontWeight).toBe('400');
+      expect(styles.zIndex).toBe('2');
       expect(poleStyles.backgroundColor).toBe('rgb(56, 103, 168)');
+      expect(poleStyles.zIndex).toBe('1');
       expect(Number.parseFloat(poleStyles.width)).toBe(3);
       expect(Number.parseFloat(poleStyles.height)).toBeGreaterThanOrEqual(11);
       expect(Math.abs(poleBounds.left - markerBounds.left)).toBeLessThan(0.1);

@@ -14,6 +14,7 @@
   let { milestones, maximumDays }: { milestones: HoldingPeriodMilestone[]; maximumDays?: number } = $props();
   let chartElement: HTMLDivElement;
   let labelLanes = $state<Record<string, number>>({});
+  let labelsBelow = $state<Record<string, boolean>>({});
   let labelsFacingLeft = $state<Record<string, boolean>>({});
   const labelElements = new SvelteMap<string, HTMLElement>();
   let layoutFrame: number | undefined;
@@ -31,6 +32,7 @@
   const labelLaneStep = 22;
   const labelKey = (milestoneIndex: number, matchIndex: number) => `${milestoneIndex}:${matchIndex}`;
   const labelLane = (milestoneIndex: number, matchIndex: number) => labelLanes[labelKey(milestoneIndex, matchIndex)] ?? 0;
+  const labelIsBelow = (milestoneIndex: number, matchIndex: number) => labelsBelow[labelKey(milestoneIndex, matchIndex)] ?? false;
   const labelFacesLeft = (milestoneIndex: number, matchIndex: number) => labelsFacingLeft[labelKey(milestoneIndex, matchIndex)] ?? false;
   const labelOffset = (milestoneIndex: number, matchIndex: number) => 10 + labelLane(milestoneIndex, matchIndex) * labelLaneStep;
   const trackHeight = (milestone: HoldingPeriodMilestone, milestoneIndex: number) => {
@@ -52,6 +54,7 @@
   const layoutLabels = () => {
     layoutFrame = undefined;
     const nextLanes: Record<string, number> = {};
+    const nextLabelsBelow: Record<string, boolean> = {};
     const nextLabelsFacingLeft: Record<string, boolean> = {};
     milestones.forEach((milestone, milestoneIndex) => {
       const measuredLabels: Array<{ matchIndex: number; left: number; right: number }> = [];
@@ -71,22 +74,33 @@
           right: facesLeft ? anchorX + 1.5 : rightFacingLeft + bounds.width
         });
       });
-      for (const side of [0, 1]) {
-        const laneEnds: number[] = [];
-        measuredLabels
-          .filter(({ matchIndex }) => matchIndex % 2 === side)
-          .sort((left, right) => left.left - right.left)
-          .forEach(({ matchIndex, left, right }) => {
-            let lane = laneEnds.findIndex((end) => left >= end + 12);
-            if (lane === -1) lane = laneEnds.length;
-            nextLanes[labelKey(milestoneIndex, matchIndex)] = lane;
-            laneEnds[lane] = right;
-          });
-      }
+      const laneEnds: [number[], number[]] = [[], []];
+      let previousLabel: { left: number; right: number; below: boolean } | undefined;
+      measuredLabels
+        .forEach(({ matchIndex, left, right }) => {
+          const overlapsPrevious = previousLabel !== undefined && left < previousLabel.right + 12 && right > previousLabel.left - 12;
+          const below = overlapsPrevious && previousLabel !== undefined ? !previousLabel.below : false;
+          nextLabelsBelow[labelKey(milestoneIndex, matchIndex)] = below;
+          previousLabel = { left, right, below };
+        });
+      measuredLabels
+        .sort((left, right) => left.left - right.left)
+        .forEach(({ matchIndex, left, right }) => {
+          const below = nextLabelsBelow[labelKey(milestoneIndex, matchIndex)];
+          const side: 0 | 1 = below ? 1 : 0;
+          let lane = laneEnds[side].findIndex((end) => left >= end + 12);
+          if (lane === -1) lane = laneEnds[side].length;
+          const key = labelKey(milestoneIndex, matchIndex);
+          nextLanes[key] = lane;
+          laneEnds[side][lane] = right;
+        });
     });
     const currentKeys = Object.keys(labelLanes);
     const nextKeys = Object.keys(nextLanes);
     if (currentKeys.length !== nextKeys.length || nextKeys.some((key) => labelLanes[key] !== nextLanes[key])) labelLanes = nextLanes;
+    const currentBelowKeys = Object.keys(labelsBelow);
+    const nextBelowKeys = Object.keys(nextLabelsBelow);
+    if (currentBelowKeys.length !== nextBelowKeys.length || nextBelowKeys.some((key) => labelsBelow[key] !== nextLabelsBelow[key])) labelsBelow = nextLabelsBelow;
     const currentDirectionKeys = Object.keys(labelsFacingLeft);
     const nextDirectionKeys = Object.keys(nextLabelsFacingLeft);
     if (currentDirectionKeys.length !== nextDirectionKeys.length || nextDirectionKeys.some((key) => labelsFacingLeft[key] !== nextLabelsFacingLeft[key])) labelsFacingLeft = nextLabelsFacingLeft;
@@ -121,6 +135,7 @@
   let labelLayoutSignature = $derived(`${scaleMaximum}|${milestones.map((milestone) => milestoneMatches(milestone).map((match) => `${match.days}:${match.label}:${match.showLabel}`).join(',')).join('|')}`);
   $effect(() => {
     void labelLayoutSignature;
+    void labelsBelow;
     void labelsFacingLeft;
     scheduleLabelLayout();
   });
@@ -148,8 +163,9 @@
           {/each}
           {#each milestoneMatches(milestone) as match, matchIndex}
             {@const facesLeft = labelFacesLeft(milestoneIndex, matchIndex)}
+            {@const below = labelIsBelow(milestoneIndex, matchIndex)}
             <span class={`holding-period-marker holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)}></span>
-            {#if match.showLabel !== false}<span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below={matchIndex % 2 === 1} class={`holding-period-value holding-period-${milestone.kind}`} style:left={flagPositionForDays(match.days, facesLeft)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={matchIndex % 2 === 0 ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={matchIndex % 2 === 1 ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}><span class="holding-period-flag-pole"></span>{match.label}</span>{/if}
+            {#if match.showLabel !== false}<span class:below class={`holding-period-flag-pole holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`}></span><span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below class={`holding-period-value holding-period-${milestone.kind}`} style:left={flagPositionForDays(match.days, facesLeft)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={!below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}>{match.label}</span>{/if}
           {/each}
           {#if !milestoneMatches(milestone).length}<span class="holding-period-unavailable">{milestone.label}</span>{/if}
         </div>
