@@ -143,8 +143,9 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-top: 16px; }
 .tax-exemption { display: flex; align-items: center; gap: 9px; color: #39574b; font-size: .875rem; font-weight: 600; line-height: 1.4; }
 .tax-exemption input { width: 17px; min-height: 17px; accent-color: #24644d; }
-.accrued-interest, .broker-transaction-fee, .account-interest-rate { display: block; color: #39574b; font-size: .825rem; font-weight: 700; }
+.accrued-interest, .broker-transaction-fee, .account-interest-rate { display: block; color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .accrued-interest input, .broker-transaction-fee input, .account-interest-rate input { display: block; margin-top: 6px; }
+.accrued-interest input, .broker-transaction-fee input, .account-interest-rate input { font-family: inherit; font-size: 1rem; font-weight: 400; letter-spacing: normal; text-transform: none; }
 .setting-field, .setting-card { min-width: 0; }
 .setting-card { border: 1px solid #d8e1db; border-radius: 7px; background: #f8faf8; padding: 16px; }
 .setting-description { margin: 9px 0 0; color: #617169; font-size: .8rem; line-height: 1.45; }
