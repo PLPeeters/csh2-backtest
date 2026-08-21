@@ -33,7 +33,7 @@
     accountSeries.applyOptions({ lastValueVisible: !projected, priceLineVisible: !projected});
     projectedCsh2Series.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
     projectedOvernightSeries.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
-    projectedAccountSeries.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected });
+    projectedAccountSeries.applyOptions({ lastValueVisible: !!projected, priceLineVisible: !!projected, lineType: projected?.baseAnnualRatePercent === undefined ? LineType.WithSteps : LineType.Simple });
     const all = [...nextData.csh2, ...nextData.overnight, ...account, ...(projected?.csh2 ?? []), ...(projected?.overnight ?? []), ...(projected?.account ?? [])];
     if (visibleFrom && visibleTo && all.some((point) => point.date >= visibleFrom && point.date <= visibleTo)) chart.timeScale().setVisibleRange({ from: visibleFrom as Time, to: visibleTo as Time });
     else chart.timeScale().fitContent();

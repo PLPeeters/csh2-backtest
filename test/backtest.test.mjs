@@ -113,6 +113,14 @@ test('compares moving a fidelity-premium principal now with waiting until it is 
   assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, earnedDate: '2026-03-02' }, { csh2AnnualRatePercent: 8 }), /must be after/);
 });
 
+test('includes base-rate accrual in the account value while waiting for a fidelity premium', () => {
+  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, {
+    id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
+  }, { csh2AnnualRatePercent: 8, baseAnnualRatePercent: 3 });
+  const expectedWaitingValue = 1000 * (1.03 ** (31 / 365)) + 50;
+  assert.equal(assessment.waitingValue, Number(expectedWaitingValue.toFixed(2)));
+});
+
 test('recommends moving after payout when waiting wins now but CSH2 wins the next full fidelity year', () => {
   const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, {
     id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
@@ -202,6 +210,45 @@ test('keeps accrued base interest and adds future fidelity payouts separately', 
     { date: '2026-03-02', value: 2.5 },
     { date: '2026-04-02', value: 7.5 }
   ]);
+});
+
+test('accrues the account balance at the base rate until a fidelity premium is earned', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const premiums = [{ id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 }];
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', premiums, {}, {
+    csh2AnnualRatePercent: 8,
+    baseAnnualRatePercent: 3
+  });
+
+  const days = 31;
+  const expectedInterest = 1000 * ((1.03) ** (days / 365) - 1) + 50;
+  assert.ok(projection);
+  assert.equal(projection.account.length, days + 1);
+  assert.ok(projection.account[1].value > projection.account[0].value);
+  assert.ok(Math.abs(projection.account.at(-1).value - expectedInterest / 10) < 1e-12);
+  assert.equal(projection.baseAnnualRatePercent, 3);
+});
+
+test('compounds the whole account balance and includes earlier premium payouts in later base interest', () => {
+  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
+  const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
+  const premiums = [
+    { id: 'premium-1', baseAmount: 100, earnedDate: '2026-04-02', finalPayoutAmount: 20 },
+    { id: 'premium-2', baseAmount: 100, earnedDate: '2026-05-02', finalPayoutAmount: 30 }
+  ];
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', premiums, {}, {
+    csh2AnnualRatePercent: 8,
+    baseAnnualRatePercent: 3
+  });
+  const dailyBaseFactor = 1.03 ** (1 / 365);
+  const firstDays = 31;
+  const secondDays = 61;
+  const firstBalance = 1000 * dailyBaseFactor ** firstDays + 20;
+  const secondBalance = firstBalance * dailyBaseFactor ** (secondDays - firstDays) + 30;
+  assert.ok(projection);
+  assert.ok(Math.abs(projection.account.at(31).value - ((firstBalance - 1000) / 1000) * 100) < 1e-12);
+  assert.ok(Math.abs(projection.account.at(61).value - ((secondBalance - 1000) / 1000) * 100) < 1e-12);
 });
 
 test('omits the combined projection when a selected CSH2 rate or overnight starting point is unavailable', () => {

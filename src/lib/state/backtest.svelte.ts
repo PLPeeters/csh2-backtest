@@ -90,6 +90,27 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     removeFidelityPremium(id: string) { settings.fidelityPremiums = settings.fidelityPremiums.filter((premium) => premium.id !== id); persist(); },
     updateFidelityPremium(id: string, key: keyof Omit<FidelityPremiumDraft, 'id'>, value: string) { const premium = settings.fidelityPremiums.find((item) => item.id === id); if (premium) { premium[key] = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
+    async setAccountRate(key: 'accountBaseInterestRate' | 'accountFidelityPremium', value: string) {
+      settings[key] = value;
+      persist();
+      if (!view || !submittedFlowsSnapshot) return;
+      const generation = ++requestGeneration;
+      const recalculatedFlows = cloneFlows(submittedFlowsSnapshot);
+      const recalculatedSettings = { ...view.settings, [key]: value };
+      status = { kind: 'loading', message: 'Updating the account projection…' };
+      try {
+        const market = await dependencies.loadMarketData();
+        const nextView = dependencies.calculate(recalculatedFlows, recalculatedSettings, market, dependencies.today());
+        if (generation !== requestGeneration) return;
+        view = nextView;
+        submittedFlowsSnapshot = cloneFlows(recalculatedFlows);
+        submittedInputSignature = calculationInputSignature(recalculatedFlows, recalculatedSettings);
+        status = { kind: 'success', message: `Updated using the ${nextView.result.valuation.date} close.` };
+      } catch (error) {
+        if (generation !== requestGeneration) return;
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
     loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
     clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },

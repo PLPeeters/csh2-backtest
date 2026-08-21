@@ -55,9 +55,13 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
       ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) }
       : {}
   } as BacktestResult;
-  const accountRates = settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== ''
-    ? { baseAnnualRatePercent: Number(settings.accountBaseInterestRate), fidelityPremiumPercent: Number(settings.accountFidelityPremium) }
+  const accountBaseRate = settings.accountBaseInterestRate === '' ? undefined : Number(settings.accountBaseInterestRate);
+  const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = Number.isFinite(accountBaseRate)
+    ? { baseAnnualRatePercent: accountBaseRate }
     : {};
+  if (settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== '') {
+    accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
+  }
   result.fidelityPremiumAssessments = assessFidelityPremiumTimings(
     market.data.prices,
     valuationDate,
@@ -67,7 +71,7 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   ) as BacktestResult['fidelityPremiumAssessments'];
   result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption);
   const projected = fidelityPremiums.length
-    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption)
+    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, { ...projectionAssumption, ...accountRates })
     : undefined;
   return {
     result,

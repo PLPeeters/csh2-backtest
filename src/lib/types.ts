@@ -26,7 +26,7 @@ export interface ChartPoint { date: string; value: number }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
 export interface ReturnProjection {
   csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; throughDate: string;
-  csh2AnnualRatePercent: number; overnightRatePercent: number;
+  csh2AnnualRatePercent: number; overnightRatePercent: number; baseAnnualRatePercent?: number;
 }
 export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[]; projected?: ReturnProjection }
 export interface BenchmarkHistorySeries {
