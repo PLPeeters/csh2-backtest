@@ -6,13 +6,13 @@ export type BenchmarkPeriod = BackwardPeriod | ForwardPeriod;
 export type Csh2RateScenario = 'cautious' | 'base' | 'optimistic';
 
 export interface CashFlowDraft { id: string; date: string; type: CashFlowType; amount: string; interestPayment: boolean }
+export interface FidelityPremiumDraft { id: string; baseAmount: string; earnedDate: string; finalPayoutAmount: string }
 export interface CalculationSettings {
   applyCapitalGainsExemption: boolean;
   applyReyndersTax: boolean;
   buyWholeSharesOnly: boolean;
-  unpaidAccruedInterest: string;
-  interestPayoutDate: string;
-  interestPayoutAmount: string;
+  accruedBaseInterest: string;
+  fidelityPremiums: FidelityPremiumDraft[];
   brokerTransactionFee: string;
   accountBaseInterestRate: string;
   accountFidelityPremium: string;
@@ -25,7 +25,7 @@ export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope;
 export interface ChartPoint { date: string; value: number }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
 export interface ReturnProjection {
-  csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; payoutDate: string;
+  csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; throughDate: string;
   csh2AnnualRatePercent: number; overnightRatePercent: number;
 }
 export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[]; projected?: ReturnProjection }
@@ -62,9 +62,13 @@ export interface LedgerEntry {
   remainingCash: number; brokerFee: number; tob: number; cgt: number; reyndersTax: number; exoneratedCgt: number;
 }
 export interface BreakEvenEstimate { date: string; days: number; csh2AnnualRatePercent: number }
-export interface InterestPayoutAssessment {
-  preferred: 'move now' | 'wait' | 'either'; difference: number; immediateValue: number; waitingValue: number;
-  payoutDate: string; csh2AnnualRatePercent: number;
+export interface FidelityPremiumAssessment {
+  id: string; baseAmount: number; earnedDate: string; finalPayoutAmount: number;
+  currentPeriodPreferred: 'move now' | 'wait' | 'either'; currentPeriodDifference: number;
+  immediateValue: number; waitingValue: number; csh2AnnualRatePercent: number;
+  recommendation: 'move now' | 'move after payout' | 'keep in account' | 'wait, then reassess' | 'either'; transferDate?: string;
+  nextYearCsh2Value?: number; nextYearAccountValue?: number;
+  purchaseGroupSize?: number;
 }
 export interface BacktestResult {
   valuation: { date: string; price: number }; netLiquidationValue: number; grossValue: number; units: number; availableCash: number;
@@ -72,7 +76,7 @@ export interface BacktestResult {
   terminalReyndersTax: number; paidBrokerFees: number; terminalBrokerFee: number; missedAmount: number;
   missedSharePercent?: number; entries: LedgerEntry[]; breakEvenEstimate?: BreakEvenEstimate;
   observedHoldingPeriods: ObservedHoldingPeriods;
-  interestPayoutAssessment?: InterestPayoutAssessment;
+  fidelityPremiumAssessments: FidelityPremiumAssessment[];
 }
 export interface CalculationView {
   result: BacktestResult; metadata: PriceEnvelope; rateMetadata: RateEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;

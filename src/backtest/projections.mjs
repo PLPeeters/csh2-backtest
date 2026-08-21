@@ -218,20 +218,21 @@ export function estimateConstantRateHoldingPeriods(prices, rates, valuationDate,
   };
 }
 
-/** Projects all cumulative-return lines to a future interest payout using the selected CSH2 rate scenario. */
-export function buildReturnProjection(flows, prices, rates, valuationDate, from, payoutDate, payoutAmount, options, { csh2AnnualRatePercent } = {}) {
-  if (!payoutDate || !Number.isFinite(payoutAmount) || payoutAmount <= 0 || payoutDate <= valuationDate) return undefined;
-  if (payoutAmount < (options.unpaidAccruedInterest ?? 0)) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
+/** Projects all cumulative-return lines through the last ongoing fidelity premium. */
+export function buildReturnProjection(flows, prices, rates, valuationDate, from, fidelityPremiums, options, { csh2AnnualRatePercent } = {}) {
+  const futurePremiums = fidelityPremiums.filter((premium) => premium.earnedDate > valuationDate).toSorted((left, right) => left.earnedDate.localeCompare(right.earnedDate));
+  if (!futurePremiums.length) return undefined;
+  const throughDate = futurePremiums.at(-1).earnedDate;
   const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
   if (!projectionRate) return undefined;
   const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
   if (!externalInflows) return undefined;
   const outflows = flows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
   const paidInterest = flows.filter((flow) => flow.type === 'inflow' && flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
-  const projectionOptions = { ...options, unpaidAccruedInterest: 0 };
+  const projectionOptions = { ...options, accruedBaseInterest: 0 };
   const projectedPrices = { ...prices };
   const csh2 = [];
-  const projectionDays = daysBetween(valuationDate, payoutDate);
+  const projectionDays = daysBetween(valuationDate, throughDate);
   for (let day = 0; day <= projectionDays; day += 1) {
     const date = dateAfter(valuationDate, day);
     if (day) projectedPrices[date] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** day };
@@ -243,56 +244,154 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
   if (!overnightPortfolio.latestDate || !Number.isFinite(overnightPortfolio.latestRate) || !overnightPortfolio.inflows) return undefined;
   const overnight = [{ date: overnightPortfolio.latestDate, value: ((overnightPortfolio.balance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 }];
   let overnightBalance = overnightPortfolio.balance;
-  const overnightDays = daysBetween(overnightPortfolio.latestDate, payoutDate);
+  const overnightDays = daysBetween(overnightPortfolio.latestDate, throughDate);
   for (let day = 1; day <= overnightDays; day += 1) {
     const date = dateAfter(overnightPortfolio.latestDate, day);
     overnightBalance *= overnightAccrualFactor(overnightPortfolio.latestRate, 1);
     overnight.push({ date, value: ((overnightBalance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 });
   }
 
-  const currentAccountReturn = ((paidInterest + (options.unpaidAccruedInterest ?? 0)) / externalInflows) * 100;
+  const currentAccountReturn = ((paidInterest + (options.accruedBaseInterest ?? 0)) / externalInflows) * 100;
+  let projectedInterest = paidInterest + (options.accruedBaseInterest ?? 0);
+  const account = [{ date: valuationDate, value: currentAccountReturn }];
+  let premiumIndex = 0;
+  while (premiumIndex < futurePremiums.length) {
+    const earnedDate = futurePremiums[premiumIndex].earnedDate;
+    while (premiumIndex < futurePremiums.length && futurePremiums[premiumIndex].earnedDate === earnedDate) {
+      projectedInterest += futurePremiums[premiumIndex].finalPayoutAmount;
+      premiumIndex += 1;
+    }
+    account.push({ date: earnedDate, value: (projectedInterest / externalInflows) * 100 });
+  }
   return {
     csh2,
     overnight,
-    account: [
-      { date: valuationDate, value: currentAccountReturn },
-      { date: payoutDate, value: ((paidInterest + payoutAmount) / externalInflows) * 100 }
-    ],
-    payoutDate,
+    account,
+    throughDate,
     csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
     overnightRatePercent: overnightPortfolio.latestRate
   };
 }
 
 /**
- * Projects move-now and wait-for-payout scenarios from the selected CSH2 rate scenario.
+ * Compares one ongoing fidelity premium with moving its principal to CSH2 now and after vesting.
  * This is a mechanical comparison, not a price forecast.
  */
-export function assessInterestPayoutTiming(flows, prices, valuationDate, options, payoutDate, payoutAmount, { csh2AnnualRatePercent } = {}) {
-  if (!payoutDate && !payoutAmount) return undefined;
-  if (!Number.isFinite(payoutAmount) || payoutAmount <= 0) throw new Error('Interest payout amount must be a positive amount.');
-  if (payoutAmount < (options.unpaidAccruedInterest ?? 0)) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(payoutDate)) throw new Error('Interest payout date must be a valid date.');
-  if (payoutDate <= valuationDate) throw new Error('Interest payout date must be after the latest CSH2 valuation date.');
-  const currentBalance = flows.reduce((sum, flow) => sum + (flow.type === 'inflow' ? flow.amount : -flow.amount), 0);
-  if (currentBalance <= 0) throw new Error('Interest payout comparison requires a positive current balance.');
+export function assessFidelityPremiumTiming(prices, valuationDate, options, premium, { csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent } = {}) {
+  const { id, baseAmount, earnedDate, finalPayoutAmount } = premium;
+  if (!Number.isFinite(baseAmount) || baseAmount <= 0) throw new Error('Every fidelity premium needs a positive base amount.');
+  if (!Number.isFinite(finalPayoutAmount) || finalPayoutAmount <= 0) throw new Error('Every fidelity premium needs a positive final payout amount.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(earnedDate)) throw new Error('Every fidelity premium needs a valid earned date.');
+  if (earnedDate <= valuationDate) throw new Error('Every fidelity premium earned date must be after the latest CSH2 valuation date.');
   const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
   if (!projectionRate) return undefined;
-  const days = daysBetween(projectionRate.valuation.date, payoutDate);
-  const projectedPrices = { ...prices, [payoutDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
-  const scenarioOptions = { ...options, unpaidAccruedInterest: 0 };
-  const immediate = runBacktest([{ date: projectionRate.valuation.date, type: 'inflow', amount: currentBalance }], projectedPrices, payoutDate, scenarioOptions);
-  const waiting = runBacktest([{ date: payoutDate, type: 'inflow', amount: currentBalance + payoutAmount }], projectedPrices, payoutDate, scenarioOptions);
-  const difference = euro(immediate.netLiquidationValue - waiting.netLiquidationValue);
+  const days = daysBetween(projectionRate.valuation.date, earnedDate);
+  const projectedPrices = { ...prices, [earnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
+  const scenarioOptions = { ...options, accruedBaseInterest: 0, buyWholeSharesOnly: false };
+  const immediate = runBacktest([{ date: projectionRate.valuation.date, type: 'inflow', amount: baseAmount }], projectedPrices, earnedDate, scenarioOptions);
+  const waitingValue = euro(baseAmount + finalPayoutAmount);
+  const currentPeriodDifference = euro(immediate.netLiquidationValue - waitingValue);
+  const currentPeriodPreferred = currentPeriodDifference > 0.005 ? 'move now' : currentPeriodDifference < -0.005 ? 'wait' : 'either';
+  let recommendation = currentPeriodPreferred === 'move now' ? 'move now' : currentPeriodPreferred === 'either' ? 'either' : 'wait, then reassess';
+  let transferDate = currentPeriodPreferred === 'wait' ? dateAfter(earnedDate, 1) : undefined;
+  let nextYearCsh2Value;
+  let nextYearAccountValue;
+  if (currentPeriodPreferred === 'wait' && Number.isFinite(baseAnnualRatePercent) && baseAnnualRatePercent > -100 &&
+      Number.isFinite(fidelityPremiumPercent) && fidelityPremiumPercent >= 0 && baseAnnualRatePercent + fidelityPremiumPercent > -100) {
+    const nextEarnedDate = dateAfterCalendarYears(transferDate, 1);
+    const transferDays = daysBetween(projectionRate.valuation.date, transferDate);
+    const nextDays = daysBetween(projectionRate.valuation.date, nextEarnedDate);
+    projectedPrices[transferDate] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** transferDays };
+    projectedPrices[nextEarnedDate] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** nextDays };
+    nextYearCsh2Value = runBacktest([{ date: transferDate, type: 'inflow', amount: baseAmount }], projectedPrices, nextEarnedDate, scenarioOptions).netLiquidationValue;
+    nextYearAccountValue = euro(baseAmount * (1 + (baseAnnualRatePercent + fidelityPremiumPercent) / 100));
+    recommendation = nextYearCsh2Value > nextYearAccountValue + 0.005 ? 'move after payout' : 'keep in account';
+  }
   return {
-    payoutDate,
-    days,
+    id,
+    baseAmount,
+    earnedDate,
+    finalPayoutAmount,
     csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
     immediateValue: immediate.netLiquidationValue,
-    waitingValue: waiting.netLiquidationValue,
-    difference,
-    preferred: difference > 0.005 ? 'move now' : difference < -0.005 ? 'wait' : 'either'
+    waitingValue,
+    currentPeriodDifference,
+    currentPeriodPreferred,
+    recommendation,
+    transferDate,
+    nextYearCsh2Value,
+    nextYearAccountValue
   };
+}
+
+/** Orders ongoing periods as a regulated savings-account withdrawal would: least advanced first, then lowest premium rate. */
+export function orderFidelityPremiumsForWithdrawal(fidelityPremiums) {
+  return fidelityPremiums.toSorted((left, right) =>
+    right.earnedDate.localeCompare(left.earnedDate) ||
+    (left.finalPayoutAmount / left.baseAmount) - (right.finalPayoutAmount / right.baseAmount));
+}
+
+/** Orders finished recommendations by their next action date, with indefinite keep decisions last. */
+export function orderFidelityAssessmentsByRecommendation(assessments, valuationDate) {
+  const actionDate = (assessment) => {
+    if (assessment.recommendation === 'move now' || assessment.recommendation === 'either') return valuationDate;
+    if (assessment.recommendation === 'move after payout') return assessment.transferDate;
+    if (assessment.recommendation === 'wait, then reassess') return assessment.transferDate;
+    return '9999-12-31';
+  };
+  return assessments.toSorted((left, right) =>
+    actionDate(left).localeCompare(actionDate(right)) ||
+    right.earnedDate.localeCompare(left.earnedDate) ||
+    (left.finalPayoutAmount / left.baseAmount) - (right.finalPayoutAmount / right.baseAmount));
+}
+
+/** Assesses all premiums and combines principals that would be purchased in CSH2 on the same day. */
+export function assessFidelityPremiumTimings(prices, valuationDate, options, fidelityPremiums, projection = {}) {
+  const assessments = orderFidelityPremiumsForWithdrawal(fidelityPremiums)
+    .map((premium) => assessFidelityPremiumTiming(prices, valuationDate, options, premium, projection))
+    .filter(Boolean);
+  const projectionRate = projectedCsh2Growth(prices, valuationDate, projection.csh2AnnualRatePercent);
+  if (!projectionRate) return assessments;
+  const scenarioOptions = { ...options, accruedBaseInterest: 0, buyWholeSharesOnly: false };
+  const groups = Map.groupBy(assessments.filter((assessment) => assessment.recommendation === 'move now' || assessment.recommendation === 'move after payout'),
+    (assessment) => assessment.recommendation === 'move now' ? projectionRate.valuation.date : assessment.transferDate);
+
+  for (const [transferDate, group] of groups) {
+    if (!transferDate || group.length < 2) continue;
+    const combinedBaseAmount = group.reduce((sum, assessment) => sum + assessment.baseAmount, 0);
+    if (transferDate === projectionRate.valuation.date) {
+      for (const assessment of group) {
+        const days = daysBetween(projectionRate.valuation.date, assessment.earnedDate);
+        const projectedPrices = { ...prices, [assessment.earnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
+        const combined = runBacktest([{ date: transferDate, type: 'inflow', amount: combinedBaseAmount }], projectedPrices, assessment.earnedDate, scenarioOptions);
+        assessment.immediateValue = euro(combined.netLiquidationValue * assessment.baseAmount / combinedBaseAmount);
+        assessment.currentPeriodDifference = euro(assessment.immediateValue - assessment.waitingValue);
+        assessment.currentPeriodPreferred = assessment.currentPeriodDifference > 0.005 ? 'move now' : assessment.currentPeriodDifference < -0.005 ? 'wait' : 'either';
+        assessment.recommendation = assessment.currentPeriodPreferred === 'move now' ? 'move now' : assessment.currentPeriodPreferred === 'wait' ? 'wait, then reassess' : 'either';
+      }
+      const movingGroup = group.filter((assessment) => assessment.recommendation === 'move now');
+      if (movingGroup.length > 1) for (const assessment of movingGroup) assessment.purchaseGroupSize = movingGroup.length;
+      continue;
+    }
+
+    const nextEarnedDate = dateAfterCalendarYears(transferDate, 1);
+    const transferDays = daysBetween(projectionRate.valuation.date, transferDate);
+    const nextDays = daysBetween(projectionRate.valuation.date, nextEarnedDate);
+    const projectedPrices = {
+      ...prices,
+      [transferDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** transferDays },
+      [nextEarnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** nextDays }
+    };
+    const combined = runBacktest([{ date: transferDate, type: 'inflow', amount: combinedBaseAmount }], projectedPrices, nextEarnedDate, scenarioOptions);
+    const combinedAccountValue = group.reduce((sum, assessment) => sum + (assessment.nextYearAccountValue ?? 0), 0);
+    const recommendation = combined.netLiquidationValue > combinedAccountValue + 0.005 ? 'move after payout' : 'keep in account';
+    for (const assessment of group) {
+      assessment.nextYearCsh2Value = euro(combined.netLiquidationValue * assessment.baseAmount / combinedBaseAmount);
+      assessment.recommendation = recommendation;
+      if (recommendation === 'move after payout') assessment.purchaseGroupSize = group.length;
+    }
+  }
+  return orderFidelityAssessmentsByRecommendation(assessments, valuationDate);
 }
 
 /**

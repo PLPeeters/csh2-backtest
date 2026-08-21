@@ -3,8 +3,8 @@ import { euro, TOB_RATE } from './shared.mjs';
 import { createCapitalGainsExemption, establishTaxPurchasePrice, liquidateLots, saleForLot, unitsForNetOutflow } from './taxation.mjs';
 
 /** Simulates chronological CSH2 transactions, including FIFO withdrawals and terminal liquidation. */
-export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExemption = false, applyReyndersTax = false, buyWholeSharesOnly = false, unpaidAccruedInterest = 0, brokerTransactionFee = 0 } = {}) {
-  if (!Number.isFinite(unpaidAccruedInterest) || unpaidAccruedInterest < 0) throw new Error('Unpaid accrued interest must be a non-negative amount.');
+export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExemption = false, applyReyndersTax = false, buyWholeSharesOnly = false, accruedBaseInterest = 0, brokerTransactionFee = 0 } = {}) {
+  if (!Number.isFinite(accruedBaseInterest) || accruedBaseInterest < 0) throw new Error('Accrued base interest must be a non-negative amount.');
   if (!Number.isFinite(brokerTransactionFee) || brokerTransactionFee < 0) throw new Error('Broker transaction fee must be a non-negative amount.');
   const lots = [];
   const entries = [];
@@ -77,7 +77,7 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
   const terminal = liquidateLots(openLots, prices, valuation.price, exemption, Number(valuation.date.slice(0, 4)), applyReyndersTax);
   const terminalBrokerFee = openLots.length ? brokerTransactionFee : 0;
   terminal.net -= terminalBrokerFee;
-  const totalInput = flows.reduce((sum, flow) => sum + (flow.type === 'inflow' ? flow.amount : -flow.amount), 0) + unpaidAccruedInterest;
+  const totalInput = flows.reduce((sum, flow) => sum + (flow.type === 'inflow' ? flow.amount : -flow.amount), 0) + accruedBaseInterest;
   const missedAmount = terminal.net + availableCash - totalInput;
   const missedSharePercent = totalInput ? (missedAmount / totalInput) * 100 : undefined;
   return {

@@ -79,8 +79,27 @@
   </div>
   <div class="controls flow-controls"><button class="quiet" type="button" onclick={() => controller.addFlow()}>Add cash flow</button></div>
   <div class="cash-flow-actions"><div class="interest-controls">
-    <label class="accrued-interest">Unpaid accrued interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.unpaidAccruedInterest} onchange={(event) => controller.updateSetting('unpaidAccruedInterest', event.currentTarget.value)} /></label>
-    <div class="payout-interest-fields"><label class="accrued-interest">Future interest payout on<input type="date" value={controller.settings.interestPayoutDate} onchange={(event) => controller.updateSetting('interestPayoutDate', event.currentTarget.value)} /></label><label class="accrued-interest">Future interest payout (€)<input type="number" min={Math.max(0.01, Number(controller.settings.unpaidAccruedInterest) || 0)} step="0.01" placeholder="0.00" value={controller.settings.interestPayoutAmount} onchange={(event) => controller.updateSetting('interestPayoutAmount', event.currentTarget.value)} /></label></div>
-    <p class="interest-help">Optional. The future payout amount includes the unpaid accrued interest and cannot be smaller.</p>
+    <label class="accrued-interest">Accrued base interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.accruedBaseInterest} onchange={(event) => controller.updateSetting('accruedBaseInterest', event.currentTarget.value)} /></label>
+    <p class="interest-help">Accrued base interest remains yours after a transfer and is included in today’s missed-earnings comparison.</p>
+    <div class="fidelity-premium-editor">
+      <div class="fidelity-premium-heading"><div><h3>Ongoing fidelity premiums</h3><p>Add one row for every part of your balance currently earning its own fidelity premium.</p></div><button class="quiet" type="button" onclick={() => controller.addFidelityPremium()}>Add fidelity premium</button></div>
+      {#if controller.settings.fidelityPremiums.length}
+        <div class="premium-head" aria-hidden="true"><span>Base amount (€)</span><span>Premium earned on</span><span>Final premium payout (€)</span><span></span></div>
+        <div aria-live="polite">
+          {#each controller.settings.fidelityPremiums as premium, index (premium.id)}
+            <div class="premium-row">
+              <label><span class="sr-only">Fidelity premium {index + 1} base amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.baseAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'baseAmount', event.currentTarget.value)} /></label>
+              <label><span class="sr-only">Fidelity premium {index + 1} earned on</span><input type="date" required value={premium.earnedDate} onchange={(event) => controller.updateFidelityPremium(premium.id, 'earnedDate', event.currentTarget.value)} /></label>
+              <label><span class="sr-only">Fidelity premium {index + 1} final payout in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.finalPayoutAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'finalPayoutAmount', event.currentTarget.value)} /></label>
+              <button class="delete-button" type="button" aria-label={`Remove fidelity premium ${index + 1}`} onclick={() => controller.removeFidelityPremium(premium.id)}>×</button>
+            </div>
+          {/each}
+        </div>
+        <p class="interest-help premium-help">
+          <b>Base amount</b> is the balance earning the premium.<br>
+          <b>Premium earned on</b> is the date the premium becomes yours.<br>
+          <b>Final premium payout</b> is the premium attributable to that base amount once earned.</p>
+      {/if}
+    </div>
   </div></div>
 </section>

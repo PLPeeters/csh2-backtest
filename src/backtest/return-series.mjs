@@ -18,7 +18,7 @@ export function buildBacktestReturnSeries(flows, prices, options) {
 }
 
 /** Reconstructs the actual account return from external inflows and identified interest payments. */
-export function buildAccountReturnSeries(flows, valuationDate, { unpaidAccruedInterest = 0 } = {}) {
+export function buildAccountReturnSeries(flows, valuationDate, { accruedBaseInterest = 0 } = {}) {
   const datedFlows = flows
     .filter((flow) => flow.date <= valuationDate)
     .toSorted((left, right) => left.date.localeCompare(right.date));
@@ -37,7 +37,7 @@ export function buildAccountReturnSeries(flows, valuationDate, { unpaidAccruedIn
     if (inflows) snapshots.push({ date, value: (paidInterest / inflows) * 100 });
   }
   if (!inflows) return [];
-  const valuationPoint = { date: valuationDate, value: ((paidInterest + unpaidAccruedInterest) / inflows) * 100 };
+  const valuationPoint = { date: valuationDate, value: ((paidInterest + accruedBaseInterest) / inflows) * 100 };
   if (snapshots.at(-1)?.date === valuationDate) snapshots[snapshots.length - 1] = valuationPoint;
   else snapshots.push(valuationPoint);
   return snapshots;

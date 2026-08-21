@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assessCurrentRateModelHealth, assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -70,11 +70,11 @@ test('sells the minimum whole shares for an outflow and retains excess proceeds 
   assert.equal(result.availableCash, 99.64);
 });
 
-test('reports missed earnings against net inputs and unpaid accrued interest', () => {
+test('reports missed earnings against net inputs and accrued base interest', () => {
   const result = runBacktest([
     { date: '2026-01-02', type: 'inflow', amount: 1000 },
     { date: '2026-02-02', type: 'outflow', amount: 100 }
-  ], prices, '2026-03-02', { unpaidAccruedInterest: 50 });
+  ], prices, '2026-03-02', { accruedBaseInterest: 50 });
   assert.equal(result.totalInput, 950);
   assert.equal(result.missedAmount, 118.89);
   assert.equal(result.missedSharePercent.toFixed(6), '12.514722');
@@ -103,72 +103,125 @@ test('rejects marking an outflow as an interest payment', () => {
   ], prices, '2026-03-02'), /Only an inflow/);
 });
 
-test('compares moving now with waiting for a future interest payout using the selected CSH2 rate', () => {
-  const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
-  const assessment = assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 50, { csh2AnnualRatePercent: 100 });
-  assert.equal(assessment.preferred, 'move now');
+test('compares moving a fidelity-premium principal now with waiting until it is earned', () => {
+  const premium = { id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 };
+  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, premium, { csh2AnnualRatePercent: 100 });
+  assert.equal(assessment.recommendation, 'move now');
   assert.ok(assessment.immediateValue > assessment.waitingValue);
   assert.equal(assessment.csh2AnnualRatePercent, 100);
-  assert.equal(assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '', 0), undefined);
-  assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-04-02', 0), /positive amount/);
-  assert.throws(() => assessInterestPayoutTiming(flows, prices, '2026-03-02', {}, '2026-03-02', 50), /must be after/);
+  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, finalPayoutAmount: 0 }, { csh2AnnualRatePercent: 8 }), /positive final payout/);
+  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, earnedDate: '2026-03-02' }, { csh2AnnualRatePercent: 8 }), /must be after/);
 });
 
-test('projects all cumulative-return series to a future interest payout', () => {
+test('recommends moving after payout when waiting wins now but CSH2 wins the next full fidelity year', () => {
+  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, {
+    id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
+  }, { csh2AnnualRatePercent: 20, baseAnnualRatePercent: 1, fidelityPremiumPercent: 1 });
+  assert.equal(assessment.currentPeriodPreferred, 'wait');
+  assert.equal(assessment.recommendation, 'move after payout');
+  assert.equal(assessment.transferDate, '2026-04-03');
+  assert.ok(assessment.nextYearCsh2Value > assessment.nextYearAccountValue);
+});
+
+test('orders fidelity periods from least advanced to most advanced and resolves equal dates by implied premium rate', () => {
+  const ordered = orderFidelityPremiumsForWithdrawal([
+    { id: 'earlier', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 10 },
+    { id: 'higher-rate', baseAmount: 1000, earnedDate: '2026-05-02', finalPayoutAmount: 20 },
+    { id: 'lower-rate', baseAmount: 2000, earnedDate: '2026-05-02', finalPayoutAmount: 20 }
+  ]);
+  assert.deepEqual(ordered.map((premium) => premium.id), ['lower-rate', 'higher-rate', 'earlier']);
+});
+
+test('combines same-day fidelity transfers into one CSH2 purchase', () => {
+  const projection = { csh2AnnualRatePercent: 20, baseAnnualRatePercent: 1, fidelityPremiumPercent: 1 };
+  const premiums = [
+    { id: 'higher-rate', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 },
+    { id: 'lower-rate', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 40 }
+  ];
+  const separate = premiums.map((premium) => assessFidelityPremiumTiming(prices, '2026-03-02', { brokerTransactionFee: 10 }, premium, projection));
+  const combined = assessFidelityPremiumTimings(prices, '2026-03-02', { brokerTransactionFee: 10 }, premiums, projection);
+
+  assert.deepEqual(combined.map((assessment) => assessment.id), ['lower-rate', 'higher-rate']);
+  assert.equal(combined[0].purchaseGroupSize, 2);
+  assert.equal(combined[1].purchaseGroupSize, 2);
+  assert.ok(combined.reduce((sum, assessment) => sum + assessment.nextYearCsh2Value, 0) >
+    separate.reduce((sum, assessment) => sum + assessment.nextYearCsh2Value, 0));
+});
+
+test('fidelity timing always uses fractional shares', () => {
+  const premium = { id: 'premium-1', baseAmount: 150, earnedDate: '2026-04-02', finalPayoutAmount: 1 };
+  const fractional = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: false }, premium, { csh2AnnualRatePercent: 20 });
+  const globallyWhole = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: true }, premium, { csh2AnnualRatePercent: 20 });
+  assert.equal(globallyWhole.immediateValue, fractional.immediateValue);
+  assert.equal(globallyWhole.currentPeriodDifference, fractional.currentPeriodDifference);
+});
+
+test('orders fidelity timing rows by their recommended action date and puts keep decisions last', () => {
+  const base = { baseAmount: 1000, finalPayoutAmount: 10, csh2AnnualRatePercent: 3, immediateValue: 1000, waitingValue: 1010, currentPeriodDifference: -10, currentPeriodPreferred: 'wait' };
+  const ordered = orderFidelityAssessmentsByRecommendation([
+    { ...base, id: 'keep', earnedDate: '2026-04-01', recommendation: 'keep in account' },
+    { ...base, id: 'later', earnedDate: '2026-05-01', recommendation: 'move after payout', transferDate: '2026-05-02' },
+    { ...base, id: 'now', earnedDate: '2026-06-01', recommendation: 'move now' },
+    { ...base, id: 'reassess', earnedDate: '2026-04-15', recommendation: 'wait, then reassess', transferDate: '2026-04-16' }
+  ], '2026-03-02');
+  assert.deepEqual(ordered.map((assessment) => assessment.id), ['now', 'reassess', 'later', 'keep']);
+});
+
+test('projects all cumulative-return series through multiple fidelity premiums', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
-  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}, { csh2AnnualRatePercent: 8 });
+  const premiums = [
+    { id: 'premium-1', baseAmount: 500, earnedDate: '2026-04-02', finalPayoutAmount: 20 },
+    { id: 'premium-2', baseAmount: 500, earnedDate: '2026-05-02', finalPayoutAmount: 30 }
+  ];
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', premiums, {}, { csh2AnnualRatePercent: 8 });
 
   assert.ok(projection);
   assert.equal(projection.csh2[0].date, '2026-03-02');
-  assert.equal(projection.csh2.at(-1).date, '2026-04-02');
+  assert.equal(projection.csh2.at(-1).date, '2026-05-02');
   assert.ok(projection.csh2.at(-1).value > projection.csh2[0].value);
   assert.equal(projection.overnight[0].date, '2026-03-02');
-  assert.equal(projection.overnight.at(-1).date, '2026-04-02');
+  assert.equal(projection.overnight.at(-1).date, '2026-05-02');
   assert.ok(projection.overnight.at(-1).value > projection.overnight[0].value);
   assert.deepEqual(projection.account, [
     { date: '2026-03-02', value: 0 },
-    { date: '2026-04-02', value: 5 }
+    { date: '2026-04-02', value: 2 },
+    { date: '2026-05-02', value: 5 }
   ]);
   assert.equal(projection.overnightRatePercent, 3);
   assert.equal(projection.csh2AnnualRatePercent, 8);
 });
 
-test('treats unpaid accrued interest as part of the future payout rather than adding it twice', () => {
+test('keeps accrued base interest and adds future fidelity payouts separately', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
   const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
-  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 50, { unpaidAccruedInterest: 25 }, { csh2AnnualRatePercent: 8 });
+  const premiums = [{ id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 }];
+  const projection = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', premiums, { accruedBaseInterest: 25 }, { csh2AnnualRatePercent: 8 });
 
   assert.deepEqual(projection.account, [
     { date: '2026-03-02', value: 2.5 },
-    { date: '2026-04-02', value: 5 }
+    { date: '2026-04-02', value: 7.5 }
   ]);
-  assert.throws(
-    () => buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-01-02', '2026-04-02', 20, { unpaidAccruedInterest: 25 }, { csh2AnnualRatePercent: 8 }),
-    /cannot be smaller/
-  );
-  assert.throws(
-    () => assessInterestPayoutTiming(flows, prices, '2026-03-02', { unpaidAccruedInterest: 25 }, '2026-04-02', 20, { csh2AnnualRatePercent: 8 }),
-    /cannot be smaller/
-  );
 });
 
 test('omits the combined projection when a selected CSH2 rate or overnight starting point is unavailable', () => {
   const flows = [{ date: '2026-01-02', type: 'inflow', amount: 1000 }];
-  assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}, { csh2AnnualRatePercent: 8 }), undefined);
-  assert.equal(buildReturnProjection(flows, prices, { '2026-03-02': 3 }, '2026-03-02', '2026-01-02', '2026-04-02', 50, {}), undefined);
+  const premiums = [{ id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 }];
+  assert.equal(buildReturnProjection(flows, prices, {}, '2026-03-02', '2026-01-02', premiums, {}, { csh2AnnualRatePercent: 8 }), undefined);
+  assert.equal(buildReturnProjection(flows, prices, { '2026-03-02': 3 }, '2026-03-02', '2026-01-02', premiums, {}), undefined);
 });
 
 test('projects from the latest real CSH2 quote at the selected annual rate, not its recent path', () => {
   const flows = [{ date: '2026-03-02', type: 'inflow', amount: 1000 }];
   const rates = { '2026-01-02': 3, '2026-02-02': 3, '2026-03-02': 3 };
   const assumedRate = { csh2AnnualRatePercent: 8 };
-  const rising = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-03-02', '2026-04-02', 50, {}, assumedRate);
+  const premiums = [{ id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 }];
+  const rising = buildReturnProjection(flows, prices, rates, '2026-03-02', '2026-03-02', premiums, {}, assumedRate);
   const falling = buildReturnProjection(flows, {
     '2026-01-02': 240,
     '2026-02-02': 180,
     '2026-03-02': 120
-  }, rates, '2026-03-02', '2026-03-02', '2026-04-02', 50, {}, assumedRate);
+  }, rates, '2026-03-02', '2026-03-02', premiums, {}, assumedRate);
 
   assert.ok(rising);
   assert.ok(falling);
@@ -568,7 +621,7 @@ test('builds the actual account return from paid and unpaid interest', () => {
     { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true },
     { date: '2026-02-15', type: 'outflow', amount: 400 },
     { date: '2026-03-02', type: 'inflow', amount: 1000 }
-  ], '2026-04-02', { unpaidAccruedInterest: 25 });
+  ], '2026-04-02', { accruedBaseInterest: 25 });
 
   assert.deepEqual(series, [
     { date: '2026-01-02', value: 0 },

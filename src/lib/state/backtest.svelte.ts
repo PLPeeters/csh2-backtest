@@ -1,5 +1,5 @@
-import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
-import { blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
+import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
+import { blankFidelityPremium, blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
 export interface BacktestDependencies {
@@ -15,7 +15,7 @@ function cloneFlows(flows: CashFlowDraft[]) {
 }
 
 function cloneSettings(settings: CalculationSettings) {
-  return { ...settings };
+  return { ...settings, fidelityPremiums: settings.fidelityPremiums.map((premium) => ({ ...premium })) };
 }
 
 function calculationInputSignature(flows: CashFlowDraft[], settings: CalculationSettings) {
@@ -23,23 +23,23 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
     applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
     applyReyndersTax: settings.applyReyndersTax,
     buyWholeSharesOnly: settings.buyWholeSharesOnly,
-    unpaidAccruedInterest: settings.unpaidAccruedInterest,
-    interestPayoutDate: settings.interestPayoutDate,
-    interestPayoutAmount: settings.interestPayoutAmount,
+    accruedBaseInterest: settings.accruedBaseInterest,
+    fidelityPremiums: settings.fidelityPremiums.map(({ baseAmount, earnedDate, finalPayoutAmount }) => ({ baseAmount, earnedDate, finalPayoutAmount })),
     brokerTransactionFee: settings.brokerTransactionFee,
+    ...(settings.fidelityPremiums.length ? {
+      accountBaseInterestRate: settings.accountBaseInterestRate,
+      accountFidelityPremium: settings.accountFidelityPremium
+    } : {}),
     csh2RateScenario: settings.csh2RateScenario
   };
   return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings: calculationSettings });
 }
 
 function interestSettingsAreValid(settings: CalculationSettings) {
-  const accruedInterest = Number(settings.unpaidAccruedInterest || 0);
+  const accruedInterest = Number(settings.accruedBaseInterest || 0);
   if (!Number.isFinite(accruedInterest) || accruedInterest < 0) return false;
-  const hasPayoutDate = !!settings.interestPayoutDate;
-  const hasPayoutAmount = settings.interestPayoutAmount !== '';
-  if (!hasPayoutDate && !hasPayoutAmount) return true;
-  const payoutAmount = Number(settings.interestPayoutAmount);
-  return hasPayoutDate && hasPayoutAmount && Number.isFinite(payoutAmount) && payoutAmount > 0 && payoutAmount >= accruedInterest;
+  return settings.fidelityPremiums.every((premium) => Number.isFinite(Number(premium.baseAmount)) && Number(premium.baseAmount) > 0 &&
+    !!premium.earnedDate && Number.isFinite(Number(premium.finalPayoutAmount)) && Number(premium.finalPayoutAmount) > 0);
 }
 
 export function createBacktestController(dependencies: BacktestDependencies) {
@@ -86,6 +86,9 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },
     updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') { flow.type = value; if (value === 'outflow') flow.interestPayment = false; } persist(); } },
     updateInterestPayment(id: string, value: boolean) { const flow = flows.find((item) => item.id === id); if (flow?.type === 'inflow') { flow.interestPayment = value; persist(); } },
+    addFidelityPremium() { settings.fidelityPremiums.push(blankFidelityPremium()); persist(); },
+    removeFidelityPremium(id: string) { settings.fidelityPremiums = settings.fidelityPremiums.filter((premium) => premium.id !== id); persist(); },
+    updateFidelityPremium(id: string, key: keyof Omit<FidelityPremiumDraft, 'id'>, value: string) { const premium = settings.fidelityPremiums.find((item) => item.id === id); if (premium) { premium[key] = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
     loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
     clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },

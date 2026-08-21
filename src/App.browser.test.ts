@@ -181,26 +181,31 @@ describe('CSH2 application inputs', () => {
     await expect.element(interest).toBeDisabled();
   });
 
-  it('accepts accrued and future interest together only when the future payout includes the accrued amount', async () => {
+  it('accepts accrued base interest and any number of complete fidelity premium entries', async () => {
     render(App);
     await page.getByLabelText('Date').fill('2026-01-02');
     await page.getByLabelText('Net amount in euro').fill('1000');
     const calculate = page.getByRole('button', { name: 'Calculate with latest data' });
-    const accrued = page.getByLabelText('Unpaid accrued interest (€)');
-    const payoutDate = page.getByLabelText('Future interest payout on');
-    const payoutAmount = page.getByLabelText('Future interest payout (€)');
+    const accrued = page.getByLabelText('Accrued base interest (€)');
 
     await expect.element(accrued).toBeVisible();
-    await expect.element(payoutDate).toBeVisible();
-    await expect.element(payoutAmount).toBeVisible();
     await accrued.fill('50');
-    await payoutDate.fill('2026-12-31');
-    await payoutAmount.fill('40');
-    await payoutDate.click();
+    await page.getByRole('button', { name: 'Add fidelity premium' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Ongoing fidelity premiums' })).toBeVisible();
+    const baseAmount = page.getByLabelText('Fidelity premium 1 base amount in euro');
+    const earnedDate = page.getByLabelText('Fidelity premium 1 earned on');
+    const payoutAmount = page.getByLabelText('Fidelity premium 1 final payout in euro');
+    await baseAmount.fill('500');
+    await earnedDate.fill('2026-12-31');
+    await earnedDate.click();
     await expect.element(calculate).toBeDisabled();
-    await payoutAmount.fill('50');
-    await payoutDate.click();
+    await payoutAmount.fill('12.50');
+    await earnedDate.click();
     await expect.element(calculate).toBeEnabled();
+    await page.getByRole('button', { name: 'Add fidelity premium' }).click();
+    await expect.element(page.getByLabelText('Fidelity premium 2 base amount in euro')).toBeVisible();
+    await page.getByRole('button', { name: 'Remove fidelity premium 2' }).click();
+    await expect.element(page.getByLabelText('Fidelity premium 2 base amount in euro')).toHaveLength(0);
   });
 
   it('does not count uninvested whole-share cash as an immediate break-even', async () => {

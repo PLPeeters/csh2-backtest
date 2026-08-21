@@ -1,4 +1,4 @@
-import { assessInterestPayoutTiming, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
+import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 
@@ -7,7 +7,7 @@ function options(settings: CalculationSettings) {
     applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
     applyReyndersTax: settings.applyReyndersTax,
     buyWholeSharesOnly: settings.buyWholeSharesOnly,
-    unpaidAccruedInterest: Number(settings.unpaidAccruedInterest || 0),
+    accruedBaseInterest: Number(settings.accruedBaseInterest || 0),
     brokerTransactionFee: Number(settings.brokerTransactionFee || 0)
   };
 }
@@ -27,14 +27,17 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   const investedFlows = normalized.filter((flow) => !flow.interestPayment);
   const firstInvestment = investedFlows.filter((flow) => flow.type === 'inflow').toSorted((left, right) => left.date.localeCompare(right.date))[0];
   if (!firstInvestment) throw new Error('Add at least one inflow that is not an interest payment.');
-  const unpaidAccruedInterest = Number(settings.unpaidAccruedInterest || 0);
-  if (!Number.isFinite(unpaidAccruedInterest) || unpaidAccruedInterest < 0) throw new Error('Unpaid accrued interest must be a non-negative amount.');
-  const hasPayoutDate = !!settings.interestPayoutDate;
-  const hasPayoutAmount = settings.interestPayoutAmount !== '';
-  if (hasPayoutDate !== hasPayoutAmount) throw new Error('Enter both the future interest payout date and amount.');
-  const interestPayoutAmount = Number(settings.interestPayoutAmount || 0);
-  if (hasPayoutAmount && (!Number.isFinite(interestPayoutAmount) || interestPayoutAmount <= 0)) throw new Error('Interest payout amount must be a positive amount.');
-  if (hasPayoutAmount && interestPayoutAmount < unpaidAccruedInterest) throw new Error('Future interest payout amount cannot be smaller than unpaid accrued interest.');
+  const accruedBaseInterest = Number(settings.accruedBaseInterest || 0);
+  if (!Number.isFinite(accruedBaseInterest) || accruedBaseInterest < 0) throw new Error('Accrued base interest must be a non-negative amount.');
+  const fidelityPremiums = settings.fidelityPremiums.map((premium) => ({
+    id: premium.id,
+    baseAmount: Number(premium.baseAmount),
+    earnedDate: premium.earnedDate,
+    finalPayoutAmount: Number(premium.finalPayoutAmount)
+  }));
+  if (fidelityPremiums.some((premium) => !Number.isFinite(premium.baseAmount) || premium.baseAmount <= 0)) throw new Error('Every fidelity premium needs a positive base amount.');
+  if (fidelityPremiums.some((premium) => !premium.earnedDate)) throw new Error('Every fidelity premium needs an earned date.');
+  if (fidelityPremiums.some((premium) => !Number.isFinite(premium.finalPayoutAmount) || premium.finalPayoutAmount <= 0)) throw new Error('Every fidelity premium needs a positive final payout amount.');
   const valuationDate = latestAvailablePriceDate(market.data.prices, today);
   if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
   const calculationOptions = options(settings);
@@ -47,16 +50,24 @@ export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationS
   const firstPurchaseDate = simulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
   const result = {
     ...simulation,
+    fidelityPremiumAssessments: [],
     observedHoldingPeriods: firstPurchaseDate
       ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) }
       : {}
   } as BacktestResult;
-  result.interestPayoutAssessment = hasPayoutDate
-    ? assessInterestPayoutTiming(normalized, market.data.prices, valuationDate, calculationOptions, settings.interestPayoutDate, interestPayoutAmount, projectionAssumption) as BacktestResult['interestPayoutAssessment']
-    : undefined;
+  const accountRates = settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== ''
+    ? { baseAnnualRatePercent: Number(settings.accountBaseInterestRate), fidelityPremiumPercent: Number(settings.accountFidelityPremium) }
+    : {};
+  result.fidelityPremiumAssessments = assessFidelityPremiumTimings(
+    market.data.prices,
+    valuationDate,
+    calculationOptions,
+    fidelityPremiums,
+    { ...projectionAssumption, ...accountRates }
+  ) as BacktestResult['fidelityPremiumAssessments'];
   result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption);
-  const projected = hasPayoutDate
-    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, settings.interestPayoutDate, interestPayoutAmount, calculationOptions, projectionAssumption)
+  const projected = fidelityPremiums.length
+    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption)
     : undefined;
   return {
     result,
