@@ -243,7 +243,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .holding-period-value:not(.below):not(.faces-left) { border-bottom-left-radius: 0; }
 .holding-period-value.below { top: calc(50% + 10px); bottom: auto; }
 .holding-period-value.below:not(.faces-left) { border-top-left-radius: 0; }
-.holding-period-value.faces-left { border-right-width: 3px; transform: translateX(-100%); }
+.holding-period-value.faces-left { border-right-width: 3px; }
 .holding-period-value:not(.below).faces-left { border-bottom-right-radius: 0; }
 .holding-period-value.below.faces-left { border-top-right-radius: 0; }
 .holding-period-flag-pole { position: absolute; z-index: 1; top: calc(50% - var(--flag-offset) - 1px); width: 3px; height: calc(var(--flag-offset) + 1px); background: var(--flag-color); pointer-events: none; }

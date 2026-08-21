@@ -48,7 +48,8 @@
   let ticks = $derived(Array.from({ length: Math.round(scaleMaximum / tickStep) + 1 }, (_, index) => index * tickStep));
   const positionForDays = (days: number) => `${(days / scaleMaximum) * 100}%`;
   const markerPositionForDays = (days: number) => `calc(${positionForDays(days)} - 1.5px)`;
-  const flagPositionForDays = (days: number, facesLeft: boolean) => `calc(${positionForDays(days)} ${facesLeft ? '+' : '-'} 1.5px)`;
+  const flagLeftForDays = (days: number) => `calc(${positionForDays(days)} - 1.5px)`;
+  const flagRightForDays = (days: number) => `calc(${100 - (days / scaleMaximum) * 100}% - 1.5px)`;
   let ariaLabel = $derived(`Minimum holding periods in days. ${milestones.map((milestone) => `${milestone.name}: ${milestoneMatches(milestone).map((match) => match.label).join(', ') || milestone.label}`).join('. ')}.`);
 
   const layoutLabels = () => {
@@ -165,7 +166,7 @@
             {@const facesLeft = labelFacesLeft(milestoneIndex, matchIndex)}
             {@const below = labelIsBelow(milestoneIndex, matchIndex)}
             <span class={`holding-period-marker holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)}></span>
-            {#if match.showLabel !== false}<span class:below class={`holding-period-flag-pole holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`}></span><span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below class={`holding-period-value holding-period-${milestone.kind}`} style:left={flagPositionForDays(match.days, facesLeft)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={!below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}>{match.label}</span>{/if}
+            {#if match.showLabel !== false}<span class:below class={`holding-period-flag-pole holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`}></span><span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below class={`holding-period-value holding-period-${milestone.kind}`} style:left={!facesLeft ? flagLeftForDays(match.days) : undefined} style:right={facesLeft ? flagRightForDays(match.days) : undefined} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={!below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}>{match.label}</span>{/if}
           {/each}
           {#if !milestoneMatches(milestone).length}<span class="holding-period-unavailable">{milestone.label}</span>{/if}
         </div>

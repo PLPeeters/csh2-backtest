@@ -133,6 +133,7 @@ describe('CSH2 application inputs', () => {
       expect(Math.abs(poleBounds.right - markerBounds.right)).toBeLessThan(0.1);
       const facesLeft = label.classList.contains('faces-left');
       expect(facesLeft).toBe(markerBounds.left + labelBounds.width > accountTrackBounds.right);
+      expect(styles.transform).toBe('none');
       expect(Math.abs((facesLeft ? labelBounds.right : labelBounds.left) - (facesLeft ? markerBounds.right : markerBounds.left))).toBeLessThan(0.1);
       const connectionOverlap = label.classList.contains('below') ? poleBounds.bottom - labelBounds.top : labelBounds.bottom - poleBounds.top;
       expect(connectionOverlap).toBeGreaterThan(0);
