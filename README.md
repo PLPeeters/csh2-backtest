@@ -1,66 +1,76 @@
 # CSH2 Belgium Backtester
 
-A local, browser-based simulator for dated EUR cash flows hypothetically invested in Amundi Smart Overnight Return UCITS ETF Acc (CSH2, ISIN `LU1190417599`). It models 0.12% TOB on both purchases and sales, an optional fixed broker fee per executed CSH2 trade, FIFO withdrawals expressed as net cash received, and assumes a 10% tax on each positive FIFO gain when you sell. A default-off Reynders Tax setting instead applies 30% to all positive gains, without CGT or its exemption.
+A local, browser-based simulator for comparing dated EUR cash flows invested in
+[Amundi Smart Overnight Return UCITS ETF Acc](https://www.amundietf.com/) (CSH2,
+ISIN `LU1190417599`) with the euro overnight rate and a savings account.
+
+**[Open the backtester](https://csh2-backtest.plpeeters.com/)**
+
+The backtest includes:
+
+- purchases, withdrawals, and final liquidation using historical daily closes;
+- Belgian transaction tax (TOB), optional broker fees, and FIFO gains;
+- the 2026 capital-gains regime or, optionally, Reynders Tax;
+- fractional or whole-share trading, including residual cash;
+- current-rate scenarios, break-even estimates, and missed-earnings comparisons;
+- local CSV import for cash flows; and
+- interactive historical and annualized-return charts.
+
+All calculations run in the browser. Imported files and cash flows remain on your
+device.
 
 <a href="https://www.buymeacoffee.com/plpeeters" target="_blank" rel="noopener noreferrer">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" height="60">
 </a>
 
-Enable **Buy whole shares only** to restrict purchases and sales to whole CSH2 shares. Each inflow is added to available cash; the simulator buys the maximum affordable number of whole shares after TOB and the optional broker fee, then carries the remainder to the next buy. Available cash is used before selling shares for a withdrawal; a sale rounds up to the minimum whole shares needed, retains any excess proceeds as cash, and is included in the final net value. The transaction ledger shows cash remaining and broker fees after each transaction.
+## Run locally
 
-## Run it locally
+Node.js 20.19 or newer is required.
 
-Requires Node.js 20.19 or newer (Node.js 24 is used in CI).
+```sh
+npm install
+npm start
+```
 
-    npm test
-    npm start
+Open the URL printed by Vite, normally <http://localhost:5173>.
 
-Open the Vite URL printed in the terminal, normally [http://localhost:5173](http://localhost:5173).
+## Market data
 
-The application does not require secure-context-only browser APIs and can also run from an HTTP URL on a local network.
+The app uses bundled CSH2 prices and euro overnight rates, so it does not contact
+financial-data providers while calculating. A cash flow uses the closing price on
+its date, or the latest earlier market close.
 
-Startup failures are printed into the page when the application cannot mount.
+Refresh the bundled datasets with:
 
-Calculations use a snapshot of the cash flows and settings taken when **Calculate with latest data** is selected. Editing the form afterward leaves the displayed result unchanged and shows a warning that it reflects the previous calculation; restoring the submitted values clears the warning, and calculating again refreshes the result, ledger, and cumulative chart.
+```sh
+npm run refresh-data
+```
 
-Use `npm run build` to create the production site in `dist/` and `npm run preview` to serve that build. Before the first browser-test run, install project-local Chromium with `npm run playwright:install`. Run `npm run check` for Svelte and TypeScript diagnostics, `npm run lint` for source linting, or `npm run verify` for the complete check, lint, core test, browser test, and production-build sequence.
+You can refresh them separately with `npm run refresh-csh2` and
+`npm run refresh-overnight-rates`.
 
-The browser uses the bundled `src/assets/data/csh2-prices.json` and `src/assets/data/overnight-rates.json`; it does not fetch financial data from third parties at calculation time. CSH2 contains daily open/close values from 13 March 2015 onward. A cash flow uses the close on its date or latest prior market date.
+## Development
 
-The result uses Lightweight Charts to plot the cumulative net CSH2 backtest return, the euro overnight benchmark portfolio, the reconstructed return of your account, and an annualized benchmark comparison. The Your account line changes when identified interest is paid; accrued base interest is included at the final valuation point because its accrual date is unknown. When ongoing fidelity premiums are entered, dashed lines extend all three cumulative-return series through the latest earned date and the account line adds each entered payout on its own date. During the projection, the full account balance compounds at the entered annual base rate, and each paid fidelity premium joins that balance for subsequent accrual. They assume no further cash flows, the entered fidelity premiums are paid as specified, the selected cautious/base/optimistic CSH2 current-rate estimate remains constant, and the latest published overnight rate remains constant. The projection is omitted if that CSH2 estimate or the overnight starting point is unavailable. When there is not enough history to plot a cumulative backtest return, its section remains visible and shows an empty-state message in place of the chart. The annualized-return section loads when the app starts and remains visible independently of form submission. It has a Backward/Forward toggle and remembers the selected period for each direction. Its Gross/After tax toggle optionally applies buy and sell TOB plus the selected CSH2 gain-tax regime while deliberately ignoring the amount-dependent annual CGT exemption. The euro overnight benchmark remains unchanged. Backward mode uses 1M, 3M, 6M, 1Y, 2Y, and 5Y comparison periods (default 1Y); every point compares its value with the selected earlier point and annualizes the return without changing the chart’s displayed date range. Forward mode offers 1M, 3M, 6M, and 1Y periods (default 1Y). Each point shows the actual annualized CSH2 and euro overnight benchmark outcome from that date through the following selected period, so the newest selected-period portion of history has no forward points yet. It is useful for comparing a savings-account rate available on a date with what actually followed. The annualized chart retains its full static history independently of cash flows. Before calculation it shows the complete range; afterward it initially zooms to the backtest window from the first cash flow through the valuation date, and users can pan to the remaining history. For the overnight benchmark, each published rate accrues through the calendar days until the next observation using the European money-market Actual/360 convention. The charts can be zoomed and panned horizontally within their available data but cannot be dragged into blank time before the first or after the latest point. Their Y axes remain autoscaled so the visible series cannot be moved outside the viewport. The overnight portfolio follows the CSH2 transactions but excludes any cash left over by whole-share purchases or sales, so that residual cash does not earn the benchmark rate. It uses EONIA from 13 March 2015 through 31 August 2018, the ECB Pre-Euro Short-Term Rate from 3 September 2018 through 30 September 2019, and €STR from 1 October 2019 onward.
+- `npm test` runs the calculation and browser tests.
+- `npm run check` runs Svelte and TypeScript diagnostics.
+- `npm run lint` checks the source code.
+- `npm run build` creates a production build in `dist/`.
+- `npm run verify` runs all checks, tests, and the production build.
 
-The sticky global selectors apply the CSH2 gain-tax regime and cautious/base/optimistic current-rate scenario throughout the current-rate estimates and all future backtest projections. When backtest results exist, changing either selector automatically recalculates them from their last submitted cash flows and settings; unrelated form edits remain unsubmitted and keep the refreshed results marked as stale. The always-visible benchmark appears above the cash-flow form. Its holding-period timeline estimates the minimum time needed to break even, to match an optional savings-account rate, and to match €STR if current rates remain unchanged. Its coloured line segments show only intervals where CSH2 is matching the reference; a fidelity-premium jump can therefore create an uncoloured gap before a later re-match. The account projection plots net CSH2's percentage advantage only against your account: 0% is the match point, negative values mean CSH2 is behind, and positive values mean it is ahead. Arrows mark when CSH2 breaks even and when it catches up with compounded €STR. Enter the account's base annual rate and fidelity premium beside these estimates, where they update the comparison immediately without requiring a backtest recalculation. The savings-account estimate assumes one untouched deposit: the base rate applies during each 12-month period, while the fidelity premium is added only after each completed uninterrupted year. For these estimates, the current CSH2 rate combines the latest published €STR with a regression estimate of CSH2’s relative excess over the exactly compounded overnight benchmark. The regression uses every real closing price in the trailing 180 calendar days rather than relying on two endpoint prices. Its displayed ± value is the dynamically recalculated mean absolute error on independent three-month-ahead observations from 2024 onward; the methodology dialog illustrates the comparison with five rebased observations and reports rolling one-, two-, and three-year MAEs, non-overlapping one-year periods through the first measurable history, and the full history. The cautious and optimistic rates are the central estimated CSH2 annual rate minus or plus that MAE. The rates are held constant for up to 100 years. The investment-agnostic calculation assumes fractional shares and includes buy and sell TOB plus the selected tax regime. It ignores fixed broker fees, the amount-dependent annual CGT exemption, account tax, historical rate changes, and quarterly fidelity-premium payment timing.
+Install the project-local Chromium before the first browser-test run:
 
-After a backtest is calculated, two additional indicators report when its actual historical net CSH2 liquidation value first recovered the external capital assigned to the backtest and first matched the euro overnight benchmark. Account interest is excluded from both indicators. They use the entered external cash flows and selected transaction and tax settings, and are described as observed outcomes rather than current-rate projections. Both durations are measured from the first external inflow, but neither threshold can be reached before a CSH2 purchase executes. Cash that remains uninvested in whole-share mode is therefore not reported as an immediate break-even. The separate estimate in the missed-earnings card targets catch-up with the account balance, so it is labelled as such rather than as CSH2 break-even.
+```sh
+npm run playwright:install
+```
 
-## Code structure
-
-The frontend is a Svelte 5 runes-mode application built by Vite. `src/App.svelte` composes focused components under `src/lib/components/`; typed browser boundaries live under `src/lib/services/`; and `src/lib/state/backtest.svelte.ts` owns application state, submitted-input tracking, and persistence. The benchmark history worker is compiled from `src/lib/workers/benchmark-history.worker.ts`, while each chart component owns and cleans up its Lightweight Charts instance and resize observer and reactively sends changed points to its existing chart series.
-
-`src/backtest.mjs` remains the stable framework-independent calculation API used by both the browser and tests. Its implementation is separated by responsibility in `src/backtest/`: `quotes.mjs` resolves real and fallback closing prices, `taxation.mjs` applies TOB, CGT, and Reynders Tax rules, `simulation.mjs` executes chronological FIFO transactions, `projections.mjs` handles payout and break-even scenarios, and `return-series.mjs` builds chart data.
-
-## Missed earnings
-
-Enter accrued base interest to add interest already earned but not yet paid to net inputs (total inflows minus total outflows) before comparing that balance with the estimated net value if CSH2 were sold today. Because base interest is retained after a transfer, it is not treated as a reason to delay moving money. Ongoing fidelity premiums are entered as separate rows with their principal, the date the premium becomes earned, and the final premium payout. The timing results are ordered chronologically by their recommended transfer or reassessment date, with keep decisions last. For each amount, the tool compares investing that principal in CSH2 now with leaving it in the account through the earned date, including base-rate accrual until that date and the entered payout when it is earned. If moving now wins, it recommends an immediate transfer. If waiting wins, it then compares a fresh full year in CSH2 with a year at the entered account base rate plus fidelity premium; it recommends transferring the principal the day after the current premium is earned only when CSH2 wins that second comparison. Fidelity timing always uses fractional CSH2 shares. Amounts assigned the same transfer date are regrouped into one simulated purchase, so the fixed broker fee is applied once to their combined principal. All CSH2 comparisons use the selected global current-rate estimate and the selected transaction, tax, and broker-fee settings. When CSH2 is still below net input, its result card turns red and projects the break-even date using the same selected rate for up to 100 years. The time to that date is displayed in a human-readable calendar duration. If the selected rate is flat, negative, or unavailable, the result explains that a break-even date cannot be estimated. These are mechanical scenarios, not price forecasts.
-
-Mark an inflow as **Interest** when it was paid by the account being compared. Paid interest remains part of your account balance but is not treated as new external capital: it does not trigger a hypothetical CSH2 purchase and is not added to the euro overnight benchmark portfolio. Leave the box clear for interest or other money transferred in from outside the compared account.
-
-## GitHub Pages and data refresh
-
-The repository uses three workflows. `.github/workflows/refresh-overnight-rates.yml` runs at 09:15 Brussels time on weekdays and refreshes the ECB overnight benchmark, including €STR. `.github/workflows/refresh-csh2.yml` runs at midnight Brussels time from Tuesday through Saturday, after each weekday's Euronext Paris trading day, and refreshes the CSH2 price history. Either refresh commits only its own changed JSON file and directly invokes `.github/workflows/pages.yml` to publish the updated static site. The Pages workflow also publishes normal pushes to `main`; it does not refresh market data. This direct invocation is intentional: commits made with GitHub Actions' built-in token do not trigger a second push workflow.
-
-`src/assets/data/csh2-prices.json` is the canonical CSH2 history, seeded with Google Finance historical data and updated daily with Yahoo Finance trading prices. It sorts and deduplicates real market records, then regenerates closed-date fallback entries. Those fallbacks use `{ "isFallback": true, "fallbackSource": "YYYY-MM-DD" }`, carrying the prior close while preserving its real source date; charts and valuations use real trading dates only. A Yahoo Finance 429 response is retried four times using its `Retry-After` header when valid, or after 10, 20, 40, and 80 seconds otherwise. The euro overnight benchmark cache in `src/assets/data/overnight-rates.json` backfills EONIA and the ECB Pre-Euro Short-Term Rate once, then retrieves €STR incrementally with a seven-day overlap to incorporate recent revisions. A transient ECB error (429 or 5xx) or timeout is retried four times; retryable responses use a valid `Retry-After` header, while other cases fall back to the same 10, 20, 40, and 80-second schedule. A final failure stops the refresh workflow. Unchanged cache files retain their prior timestamp so reruns do not create no-op commits. Enable **Settings → Pages → Build and deployment → Source → GitHub Actions** after pushing the repository.
-
-Run `npm run refresh-data` locally to update both datasets, `npm run refresh-csh2` to update only CSH2, or `npm run refresh-overnight-rates` to update only the overnight benchmark. Each refresh runs the same current-rate model used by the browser and stops before commit if its validation sample becomes insufficient, its recent or independent MAE breaches the safety threshold, or the regression materially underperforms the former endpoint estimator. Run `npm run check-current-rate-model` to perform that health check without fetching data. The static JSON means the site stays available if Yahoo Finance or the ECB are temporarily unavailable, but each dataset can be no newer than its last successful refresh. The Pages workflow verifies the application, builds it with Vite, and uploads `dist/`.
-
-## Cloudflare caching
-
-Vite gives imported JavaScript, CSS, worker, and market-data assets content-hashed production filenames. A data refresh therefore changes the affected data URL and application import while unchanged assets retain their cache entries. Configure Cloudflare to avoid long-lived caching for `index.html`; hashed files under `dist/assets/` may be cached indefinitely.
-
-## Importing cash flows
-
-Choose or drop a CSV file above the cash-flow list. The tool preselects its date and signed-amount columns from headers and sampled data; when there is only one numeric column, it selects that as the amount. It also detects the date format, while leaving every choice editable. It accepts `YYYY-M-D`, `D/M/YYYY`, `D/M/YY`, `M/D/YYYY`, and `M/D/YY`, with `/`, `-`, or `.` separators and optional zero padding. Positive amounts are inflows and negative amounts are outflows; zero amounts and malformed rows are skipped. Imported cash flows are sorted chronologically, while entries on the same date retain their CSV order. Everything is processed locally on your device: files are parsed in the browser only, and neither they nor your cash flows leave your machine. A successful import replaces the untouched initial blank row and then resets the file and mapping fields. Use **Clear all data** and confirm the prompt to remove locally saved cash flows and settings, pending CSV data, and results; it restores a blank cash-flow row with both option toggles enabled.
+The Svelte frontend lives in `src/`. The framework-independent calculation API is
+`src/backtest.mjs`, with its implementation split by responsibility under
+`src/backtest/`.
 
 ## Important limitations
 
-This is an educational estimate, not tax advice. CGT applies only to sales from 2026 onward. For a purchase before 2026 that is sold in 2026 or later, the tool uses the higher of its original price and the 31 December 2025 CSH2 close as its tax basis. When selected, the annual capital-gains exemption applies a €10.000 annual allowance and eligible carry-forward, using only gains generated by this backtest. The default-off Reynders Tax setting treats all positive FIFO gains as Article 19bis income taxed at 30%, disables the exemption, and does not apply CGT to the same gain. The broker-fee setting applies the same fixed EUR amount to each executed CSH2 purchase, sale, and estimated final sale; it does not model broker spreads, variable commissions, fund taxation, or other tax-law exceptions. The tool uses daily closing prices, not broker execution prices. If the online source rejects a request, the app reports the error and never substitutes manual CSV data.
+This project is an educational estimate, not financial or tax advice. It uses
+daily closing prices rather than executable broker prices and does not model
+spreads, variable commissions, every fund-tax rule, or every personal tax-law
+exception. Current-rate projections hold their selected rates constant and are
+scenarios, not price forecasts.
