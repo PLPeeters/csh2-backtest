@@ -64,37 +64,45 @@
   {/if}
 </section>
 <section class="input-section cash-flow-section" aria-label="Cash-flow entries">
-  <div class="controls clear-data-controls"><button class="quiet" type="button" onclick={() => { if (confirm('Clear all saved cash flows, settings, pending CSV data, and results? This cannot be undone.')) { resetCsv(); controller.clear(); } }}>Clear all data</button></div>
-  <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span>Interest</span><span></span></div>
-  <div aria-live="polite">
-    {#each controller.flows as flow (flow.id)}
-      <div class="flow-row">
-        <label><span class="sr-only">Date</span><input type="date" required value={flow.date} onchange={(event) => controller.updateFlow(flow.id, 'date', event.currentTarget.value)} /></label>
-        <label><span class="sr-only">Direction</span><select value={flow.type} onchange={(event) => controller.updateFlow(flow.id, 'type', event.currentTarget.value)}><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label>
-        <label><span class="sr-only">Net amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={flow.amount} onchange={(event) => controller.updateFlow(flow.id, 'amount', event.currentTarget.value)} /></label>
-        <label class="interest-payment"><input type="checkbox" checked={flow.interestPayment} disabled={flow.type !== 'inflow'} onchange={(event) => controller.updateInterestPayment(flow.id, event.currentTarget.checked)} /><span class="sr-only">Interest payment</span></label>
-        <button class="delete-button" type="button" aria-label="Remove cash flow" onclick={() => controller.removeFlow(flow.id)}>×</button>
+  <details class="cash-flow-disclosure" open>
+    <summary><span>Cash-flow entries</span><small>{controller.flows.length} {controller.flows.length === 1 ? 'entry' : 'entries'}</small></summary>
+    <div class="cash-flow-disclosure-content">
+      <div class="controls clear-data-controls"><button class="quiet" type="button" onclick={() => { if (confirm('Clear all saved cash flows, settings, pending CSV data, and results? This cannot be undone.')) { resetCsv(); controller.clear(); } }}>Clear all data</button></div>
+      <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span>Interest</span><span></span></div>
+      <div aria-live="polite">
+        {#each controller.flows as flow (flow.id)}
+          <div class="flow-row">
+            <label><span class="flow-field-label">Date</span><input type="date" required value={flow.date} onchange={(event) => controller.updateFlow(flow.id, 'date', event.currentTarget.value)} /></label>
+            <label><span class="flow-field-label">Direction</span><select value={flow.type} onchange={(event) => controller.updateFlow(flow.id, 'type', event.currentTarget.value)}><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label>
+            <label><span class="flow-field-label">Net amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={flow.amount} onchange={(event) => controller.updateFlow(flow.id, 'amount', event.currentTarget.value)} /></label>
+            <label class="interest-payment"><span class="flow-field-label">Interest payment</span><input type="checkbox" checked={flow.interestPayment} disabled={flow.type !== 'inflow'} onchange={(event) => controller.updateInterestPayment(flow.id, event.currentTarget.checked)} /></label>
+            <button class="delete-button" type="button" aria-label="Remove cash flow" onclick={() => controller.removeFlow(flow.id)}>×</button>
+          </div>
+        {/each}
       </div>
-    {/each}
-  </div>
-  <div class="controls flow-controls"><button class="quiet" type="button" onclick={() => controller.addFlow()}>Add cash flow</button></div>
+      <div class="controls flow-controls"><button class="quiet" type="button" onclick={() => controller.addFlow()}>Add cash flow</button></div>
+    </div>
+  </details>
   <div class="cash-flow-actions"><div class="interest-controls">
     <label class="accrued-interest">Accrued base interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.accruedBaseInterest} onchange={(event) => controller.updateSetting('accruedBaseInterest', event.currentTarget.value)} /></label>
     <p class="interest-help">Accrued base interest remains yours after a transfer and is included in today’s missed-earnings comparison.</p>
     <div class="fidelity-premium-editor">
-      <div class="fidelity-premium-heading"><div><h3>Ongoing fidelity premiums</h3><p>Add one row for every part of your balance currently earning its own fidelity premium.</p></div><button class="quiet" type="button" onclick={() => controller.addFidelityPremium()}>Add fidelity premium</button></div>
+      <div class="fidelity-premium-heading"><p class="eyebrow">Optional</p><h3>Ongoing fidelity premiums</h3><p>Add one row for every part of your balance currently earning its own fidelity premium.</p></div>
       {#if controller.settings.fidelityPremiums.length}
         <div class="premium-head" aria-hidden="true"><span>Base amount (€)</span><span>Premium earned on</span><span>Final premium payout (€)</span><span></span></div>
         <div aria-live="polite">
           {#each controller.settings.fidelityPremiums as premium, index (premium.id)}
             <div class="premium-row">
-              <label><span class="sr-only">Fidelity premium {index + 1} base amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.baseAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'baseAmount', event.currentTarget.value)} /></label>
-              <label><span class="sr-only">Fidelity premium {index + 1} earned on</span><input type="date" required value={premium.earnedDate} onchange={(event) => controller.updateFidelityPremium(premium.id, 'earnedDate', event.currentTarget.value)} /></label>
-              <label><span class="sr-only">Fidelity premium {index + 1} final payout in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.finalPayoutAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'finalPayoutAmount', event.currentTarget.value)} /></label>
+              <label><span class="premium-field-label">Fidelity premium {index + 1} base amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.baseAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'baseAmount', event.currentTarget.value)} /></label>
+              <label><span class="premium-field-label">Fidelity premium {index + 1} earned on</span><input type="date" required value={premium.earnedDate} onchange={(event) => controller.updateFidelityPremium(premium.id, 'earnedDate', event.currentTarget.value)} /></label>
+              <label><span class="premium-field-label">Fidelity premium {index + 1} final payout in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={premium.finalPayoutAmount} onchange={(event) => controller.updateFidelityPremium(premium.id, 'finalPayoutAmount', event.currentTarget.value)} /></label>
               <button class="delete-button" type="button" aria-label={`Remove fidelity premium ${index + 1}`} onclick={() => controller.removeFidelityPremium(premium.id)}>×</button>
             </div>
           {/each}
         </div>
+      {/if}
+      <div class="controls premium-controls"><button class="quiet" type="button" onclick={() => controller.addFidelityPremium()}>Add fidelity premium</button></div>
+      {#if controller.settings.fidelityPremiums.length}
         <p class="interest-help premium-help">
           <b>Base amount</b> is the balance earning the premium.<br>
           <b>Premium earned on</b> is the date the premium becomes yours.<br>
