@@ -18,6 +18,32 @@ const valuationDate = Object.entries(priceEnvelope.prices)
   .sort()
   .at(-1);
 
+function assertModelParity(actual, expected, path = 'model') {
+  if (typeof expected === 'number') {
+    assert.equal(typeof actual, 'number', `${path} must be a number`);
+    if (Number.isInteger(actual) && Number.isInteger(expected)) {
+      assert.equal(actual, expected, path);
+      return;
+    }
+    const tolerance = Number.EPSILON * 8 * Math.max(1, Math.abs(actual), Math.abs(expected));
+    assert.ok(Math.abs(actual - expected) <= tolerance, `${path}: expected ${expected}, received ${actual}`);
+    return;
+  }
+  if (Array.isArray(expected)) {
+    assert.ok(Array.isArray(actual), `${path} must be an array`);
+    assert.equal(actual.length, expected.length, `${path}.length`);
+    expected.forEach((value, index) => assertModelParity(actual[index], value, `${path}[${index}]`));
+    return;
+  }
+  if (expected && typeof expected === 'object') {
+    assert.ok(actual && typeof actual === 'object' && !Array.isArray(actual), `${path} must be an object`);
+    assert.deepEqual(Object.keys(actual), Object.keys(expected), `${path} keys`);
+    Object.entries(expected).forEach(([key, value]) => assertModelParity(actual[key], value, `${path}.${key}`));
+    return;
+  }
+  assert.equal(actual, expected, path);
+}
+
 test('publishes a validated model tied to its valuation date, configuration, and source records', () => {
   const calculated = calculateCurrentRateModel(priceEnvelope.prices, rateEnvelope.rates, valuationDate);
   const publication = publishCurrentRateModel(calculated, priceEnvelope.prices, rateEnvelope.rates);
@@ -30,7 +56,17 @@ test('publishes a validated model tied to its valuation date, configuration, and
 test('the checked-in published model has parity with a fresh calculation', () => {
   const calculated = calculateCurrentRateModel(priceEnvelope.prices, rateEnvelope.rates, valuationDate);
   const published = compatiblePublishedCurrentRateModel(storedPublication, priceEnvelope.prices, rateEnvelope.rates, valuationDate);
-  assert.deepEqual(published, calculated);
+  assertModelParity(published, calculated);
+});
+
+test('publication parity tolerates platform rounding but rejects material model drift', () => {
+  const platformRounded = structuredClone(storedPublication.model);
+  platformRounded.errorWindows[2].maeAnnualRatePercent += Number.EPSILON / 2;
+  assertModelParity(platformRounded, storedPublication.model);
+
+  const drifted = structuredClone(storedPublication.model);
+  drifted.errorWindows[2].maeAnnualRatePercent += 1e-12;
+  assert.throws(() => assertModelParity(drifted, storedPublication.model), /model\.errorWindows\[2\]\.maeAnnualRatePercent/);
 });
 
 test('the browser cache consumes a compatible publication without recalculating', () => {
