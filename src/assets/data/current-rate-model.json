@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "valuationDate": "2026-08-21",
+  "sourceData": {
+    "prices": "0505c24a6e636c1a",
+    "rates": "61b13aad088ea2df"
+  },
+  "configuration": {
+    "lookbackDays": 180,
+    "evaluationDays": 90,
+    "validationStartDate": "2024-01-01"
+  },
+  "model": {
+    "valuationDate": "2026-08-21",
+    "trendStartDate": "2026-02-23",
+    "trendDays": 179,
+    "trendObservations": 126,
+    "trendExamples": [
+      {
+        "date": "2026-02-23",
+        "csh2Index": 100,
+        "overnightBenchmarkIndex": 100,
+        "gapPercent": 0
+      },
+      {
+        "date": "2026-02-24",
+        "csh2Index": 100.01843657817109,
+        "overnightBenchmarkIndex": 100.0053638888889,
+        "gapPercent": 0.013071988115287425
+      },
+      {
+        "date": "2026-08-19",
+        "csh2Index": 101.19837645584151,
+        "overnightBenchmarkIndex": 100.99864893261604,
+        "gapPercent": 0.19775266831414395
+      },
+      {
+        "date": "2026-08-20",
+        "csh2Index": 101.2168169724906,
+        "overnightBenchmarkIndex": 101.00478740605672,
+        "gapPercent": 0.20992031356046326
+      },
+      {
+        "date": "2026-08-21",
+        "csh2Index": 101.23525045614326,
+        "overnightBenchmarkIndex": 101.01093466964576,
+        "gapPercent": 0.2220707958312751
+      }
+    ],
+    "trendExamplesOmitted": true,
+    "rateDate": "2026-08-20",
+    "overnightRatePercent": 2.191,
+    "currentOvernightAnnualRatePercent": 2.2462189318311454,
+    "csh2ExcessAnnualRatePercent": 0.3868511102913464,
+    "csh2AnnualRatePercent": 2.641759564999857,
+    "csh2AnnualRateLowPercent": 2.5363858661225294,
+    "csh2AnnualRateHighPercent": 2.747133263877185,
+    "modelErrorAnnualRatePercent": 0.10537369887732762,
+    "errorEvaluationDays": 90,
+    "errorValidationFrom": "2024-01-02",
+    "errorValidationTo": "2026-05-22",
+    "errorValidationObservations": 609,
+    "referenceValidationMaeAnnualRatePercent": 0.15991206136463917,
+    "recentMaeAnnualRatePercent": 0.06967977879622908,
+    "errorWindows": [
+      {
+        "fullHistory": false,
+        "from": "2025-05-23",
+        "to": "2026-05-22",
+        "observations": 255,
+        "maeAnnualRatePercent": 0.06967977879622908,
+        "rollingYears": 1
+      },
+      {
+        "fullHistory": false,
+        "from": "2024-05-23",
+        "to": "2026-05-22",
+        "observations": 510,
+        "maeAnnualRatePercent": 0.09392681988170992,
+        "rollingYears": 2
+      },
+      {
+        "fullHistory": false,
+        "from": "2023-05-23",
+        "to": "2026-05-22",
+        "observations": 766,
+        "maeAnnualRatePercent": 0.10396015082634967,
+        "rollingYears": 3
+      },
+      {
+        "fullHistory": false,
+        "from": "2025-05-23",
+        "to": "2026-05-22",
+        "observations": 255,
+        "maeAnnualRatePercent": 0.06967977879622908
+      },
+      {
+        "fullHistory": false,
+        "from": "2024-05-23",
+        "to": "2025-05-22",
+        "observations": 255,
+        "maeAnnualRatePercent": 0.11817386096719067
+      },
+      {
+        "fullHistory": false,
+        "from": "2023-05-23",
+        "to": "2024-05-22",
+        "observations": 256,
+        "maeAnnualRatePercent": 0.12394842731762447
+      },
+      {
+        "fullHistory": false,
+        "from": "2022-05-23",
+        "to": "2023-05-22",
+        "observations": 257,
+        "maeAnnualRatePercent": 0.09782217924737166
+      },
+      {
+        "fullHistory": false,
+        "from": "2021-05-24",
+        "to": "2022-05-20",
+        "observations": 258,
+        "maeAnnualRatePercent": 0.05149262189261402
+      },
+      {
+        "fullHistory": false,
+        "from": "2020-05-25",
+        "to": "2021-05-21",
+        "observations": 256,
+        "maeAnnualRatePercent": 0.03164958765038018
+      },
+      {
+        "fullHistory": false,
+        "from": "2019-05-23",
+        "to": "2020-05-22",
+        "observations": 254,
+        "maeAnnualRatePercent": 0.09142617906937649
+      },
+      {
+        "fullHistory": false,
+        "from": "2018-05-23",
+        "to": "2019-05-22",
+        "observations": 255,
+        "maeAnnualRatePercent": 0.05830908832803841
+      },
+      {
+        "fullHistory": false,
+        "from": "2017-05-23",
+        "to": "2018-05-22",
+        "observations": 254,
+        "maeAnnualRatePercent": 0.10580546166052522
+      },
+      {
+        "fullHistory": false,
+        "from": "2016-05-23",
+        "to": "2017-05-22",
+        "observations": 257,
+        "maeAnnualRatePercent": 0.037762817116319895
+      },
+      {
+        "fullHistory": false,
+        "from": "2015-09-09",
+        "to": "2016-05-20",
+        "observations": 175,
+        "maeAnnualRatePercent": 0.05557959580781801
+      },
+      {
+        "fullHistory": true,
+        "from": "2015-09-09",
+        "to": "2026-05-22",
+        "observations": 2732,
+        "maeAnnualRatePercent": 0.07707111786993304
+      }
+    ]
+  }
+}

@@ -369,4 +369,40 @@ describe('CSH2 application inputs', () => {
     expect(controller.view?.settings.csh2RateScenario).toBe('optimistic');
     expect(controller.resultIsStale).toBe(true);
   });
+
+  it('keeps the latest result when rapid incremental recalculations finish out of order', async () => {
+    const market = { data: { cachedAt: '2026-08-09T00:00:00Z', prices: {} }, rateData: { rates: {} }, version: 'test' } as MarketDataBundle;
+    const pending: Array<(market: MarketDataBundle) => void> = [];
+    let loadImmediately = true;
+    const controller = createBacktestController({
+      storage: localStorage,
+      today: () => '2026-08-09',
+      loadMarketData: () => loadImmediately
+        ? Promise.resolve(market)
+        : new Promise<MarketDataBundle>((resolve) => pending.push(resolve)),
+      calculate: (_flows, calculationSettings) => ({
+        settings: { ...calculationSettings },
+        result: { valuation: { date: '2026-08-08' } },
+        metadata: market.data,
+        rateMetadata: market.rateData,
+        returnSeries: { csh2: [], overnight: [], account: [] },
+        from: '2026-01-02',
+        to: '2026-08-08'
+      }) as unknown as CalculationView,
+      prepareBenchmark: async () => ({}) as never
+    });
+    controller.replaceFlows([{ id: createFlowId(), date: '2026-01-02', type: 'inflow', amount: '1000', interestPayment: false }]);
+    await controller.calculate();
+    loadImmediately = false;
+
+    const older = controller.setAccountRate('accountBaseInterestRate', '1.5');
+    const latest = controller.setAccountRate('accountBaseInterestRate', '2.5');
+    pending[1](market);
+    await latest;
+    pending[0](market);
+    await older;
+
+    expect(controller.view?.settings.accountBaseInterestRate).toBe('2.5');
+    expect(controller.status.kind).toBe('success');
+  });
 });

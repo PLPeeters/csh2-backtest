@@ -1,4 +1,4 @@
-import type { BenchmarkDirection, BenchmarkHistory, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
+import type { BenchmarkDirection, BenchmarkHistory, BenchmarkHistoryRequest, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
 import { blankFidelityPremium, blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
@@ -7,7 +7,7 @@ export interface BacktestDependencies {
   today(): string;
   loadMarketData(): Promise<MarketDataBundle>;
   calculate(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView;
-  prepareBenchmark(request: { prices: MarketDataBundle['data']['prices']; rates: MarketDataBundle['rateData']['rates']; to: string }): Promise<BenchmarkHistory>;
+  prepareBenchmark(request: BenchmarkHistoryRequest): Promise<BenchmarkHistory>;
 }
 
 function cloneFlows(flows: CashFlowDraft[]) {
@@ -66,7 +66,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     try {
       const to = requestedTo ?? latestAvailablePriceDate(market.data.prices, dependencies.today());
       if (!to) throw new Error('The published CSH2 price data contains no closing prices.');
-      const history = await dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to });
+      const history = await dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to, currentRateModel: market.currentRateModel });
       if (generation !== benchmarkRequestGeneration) return;
       benchmark = history;
       benchmarkStatus = { kind: 'success', message: '' };

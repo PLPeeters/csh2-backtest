@@ -30,3 +30,17 @@ test('publishes the full euro overnight benchmark history', async () => {
   assert.equal(benchmark.rates['2019-09-30'], -0.549);
   assert.equal(benchmark.rates['2019-10-01'], -0.549);
 });
+
+test('publishes a current-rate model for the latest real CSH2 close', async () => {
+  const [prices, publication] = await Promise.all([
+    readFile(new URL('../src/assets/data/csh2-prices.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../src/assets/data/current-rate-model.json', import.meta.url), 'utf8').then(JSON.parse)
+  ]);
+  const latestRealClose = Object.entries(prices.prices)
+    .filter(([, record]) => !record.isFallback && Number.isFinite(record.close))
+    .map(([date]) => date)
+    .sort()
+    .at(-1);
+  assert.equal(publication.valuationDate, latestRealClose);
+  assert.equal(publication.model.valuationDate, latestRealClose);
+});

@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchWithBackoff } from './fetch-with-backoff.mjs';
 import { parseRefreshMode } from './refresh-data-mode.mjs';
+import { assertCalculatedCurrentRateModelHealthy, calculateCurrentRateModel } from '../src/backtest.mjs';
+import { publishCurrentRateModel } from '../src/lib/services/current-rate-model-publication.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const refreshMode = parseRefreshMode(process.argv.slice(2));
@@ -10,6 +12,7 @@ const pricePath = resolve(root, 'src/assets/data/csh2-prices.json');
 const priceSource = 'Google Finance historical data, with daily Yahoo Finance updates';
 const benchmarkPath = resolve(root, 'src/assets/data/overnight-rates.json');
 const legacyRatePath = resolve(root, 'src/assets/data/estr-rates.json');
+const currentRateModelPath = resolve(root, 'src/assets/data/current-rate-model.json');
 const historicalStart = '2015-03-13';
 const estrCorrectionWindowDays = 7;
 const marketDataRetryDelaysMilliseconds = [10_000, 20_000, 40_000, 80_000];
@@ -116,25 +119,29 @@ function parseRates(text, label) {
 
 let appendedPrices = 0;
 let changedRates = 0;
+const [existingPrices, existingBenchmark, benchmarkExists, existingPublication] = await Promise.all([
+  readJson(pricePath, { prices: {} }),
+  readJson(benchmarkPath, readJson(legacyRatePath, { rates: {} })),
+  pathExists(benchmarkPath),
+  readJson(currentRateModelPath, undefined)
+]);
+let publishedPriceEnvelope = existingPrices;
+let publishedBenchmarkEnvelope = existingBenchmark;
+let pricesChanged = false;
+let ratesChanged = false;
 
 if (refreshMode.csh2) {
-  const existingPrices = await readJson(pricePath, { prices: {} });
   const historyPrices = Object.fromEntries(Object.entries(existingPrices.prices).filter(([, price]) => !price?.isFallback && Number.isFinite(price?.open) && Number.isFinite(price?.close)));
   const lastHistoryDate = Object.keys(historyPrices).sort().at(-1);
   if (!lastHistoryDate) throw new Error('CSH2 history contains no prices.');
   const dailyPrices = lastHistoryDate < today ? await fetchDailyPrices(dayAfter(lastHistoryDate)) : {};
   const publishedPrices = publishedPricesWithFallbacks(sortByDate({ ...historyPrices, ...dailyPrices }), today);
-  if (!sameRecords(existingPrices.prices, publishedPrices) || existingPrices.source !== priceSource) {
-    await writeJson(pricePath, { source: priceSource, cachedAt: new Date().toISOString(), prices: publishedPrices });
-  }
+  pricesChanged = !sameRecords(existingPrices.prices, publishedPrices) || existingPrices.source !== priceSource;
+  if (pricesChanged) publishedPriceEnvelope = { source: priceSource, cachedAt: new Date().toISOString(), prices: publishedPrices };
   appendedPrices = Object.keys(dailyPrices).length;
 }
 
 if (refreshMode.overnightRates) {
-  const [existingBenchmark, benchmarkExists] = await Promise.all([
-    readJson(benchmarkPath, readJson(legacyRatePath, { rates: {} })),
-    pathExists(benchmarkPath)
-  ]);
   const loadedSegmentIds = new Set(existingBenchmark.segments?.map(({ id }) => id));
   const historicalSegments = benchmarkSegments.filter((segment) => segment.id !== 'estr' && !loadedSegmentIds.has(segment.id));
   const estrSegment = benchmarkSegments.at(-1);
@@ -144,11 +151,25 @@ if (refreshMode.overnightRates) {
     fetchRates(estrSegment, lastEstrDate ? daysBefore(lastEstrDate, estrCorrectionWindowDays) : estrSegment.start, today)
   ]);
   const mergedRates = sortByDate({ ...existingBenchmark.rates, ...Object.assign({}, ...historicalRates), ...estrRates });
-  if (!benchmarkExists || !sameRecords(existingBenchmark.rates, mergedRates) || existingBenchmark.source !== 'European Central Bank Euro overnight benchmark' || !sameRecords(existingBenchmark.segments, benchmarkSegments)) {
-    await writeJson(benchmarkPath, { source: 'European Central Bank Euro overnight benchmark', cachedAt: new Date().toISOString(), segments: benchmarkSegments, rates: mergedRates });
-  }
-  if (await pathExists(legacyRatePath)) await rm(legacyRatePath);
+  ratesChanged = !benchmarkExists || !sameRecords(existingBenchmark.rates, mergedRates) || existingBenchmark.source !== 'European Central Bank Euro overnight benchmark' || !sameRecords(existingBenchmark.segments, benchmarkSegments);
+  if (ratesChanged) publishedBenchmarkEnvelope = { source: 'European Central Bank Euro overnight benchmark', cachedAt: new Date().toISOString(), segments: benchmarkSegments, rates: mergedRates };
   changedRates = countChangedRecords(existingBenchmark.rates, mergedRates);
 }
+
+const valuationDate = Object.entries(publishedPriceEnvelope.prices)
+  .filter(([, record]) => !record?.isFallback && Number.isFinite(record?.close))
+  .map(([date]) => date)
+  .sort()
+  .at(-1);
+if (!valuationDate) throw new Error('The current-rate model publication found no real CSH2 closes.');
+const model = assertCalculatedCurrentRateModelHealthy(
+  calculateCurrentRateModel(publishedPriceEnvelope.prices, publishedBenchmarkEnvelope.rates, valuationDate)
+);
+const publication = publishCurrentRateModel(model, publishedPriceEnvelope.prices, publishedBenchmarkEnvelope.rates);
+
+if (pricesChanged) await writeJson(pricePath, publishedPriceEnvelope);
+if (ratesChanged) await writeJson(benchmarkPath, publishedBenchmarkEnvelope);
+if (!sameRecords(existingPublication, publication)) await writeJson(currentRateModelPath, publication);
+if (refreshMode.overnightRates && await pathExists(legacyRatePath)) await rm(legacyRatePath);
 
 console.log(`Appended ${appendedPrices} daily CSH2 records and updated ${changedRates} Euro overnight benchmark records as of ${today}.`);

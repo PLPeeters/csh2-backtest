@@ -21,7 +21,7 @@ export interface CalculationSettings {
 export interface PriceRecord { open?: number; close: number; isFallback?: boolean; fallbackSource?: string }
 export interface PriceEnvelope { source?: string; cachedAt: string; prices: Record<string, PriceRecord | number> }
 export interface RateEnvelope { source?: string; cachedAt?: string; rates: Record<string, number> }
-export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; version: string }
+export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; currentRateModel?: CurrentRateModelPublication; version: string }
 export interface ChartPoint { date: string; value: number }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
 export interface ReturnProjection {
@@ -52,11 +52,19 @@ export interface ConstantRateHoldingPeriods {
   breakEven?: MinimumHoldingPeriod; matchOvernight?: MinimumHoldingPeriod;
   breakEvenRange: MinimumHoldingPeriodRange; matchOvernightRange: MinimumHoldingPeriodRange;
 }
+export type CurrentRateModel = Omit<ConstantRateHoldingPeriods, 'breakEven' | 'matchOvernight' | 'breakEvenRange' | 'matchOvernightRange'>;
+export interface CurrentRateModelPublication {
+  schemaVersion: number;
+  valuationDate: string;
+  sourceData: { prices: string; rates: string };
+  configuration: { lookbackDays: number; evaluationDays: number; validationStartDate: string };
+  model: CurrentRateModel;
+}
 export interface BenchmarkHistory {
   gross: BenchmarkHistorySeries; cgt: BenchmarkHistorySeries; reynders: BenchmarkHistorySeries;
   holdingPeriods: { cgt?: ConstantRateHoldingPeriods; reynders?: ConstantRateHoldingPeriods };
 }
-export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string }
+export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string; currentRateModel?: CurrentRateModelPublication }
 export interface LedgerEntry {
   date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;
   remainingCash: number; brokerFee: number; tob: number; cgt: number; reyndersTax: number; exoneratedCgt: number;

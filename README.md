@@ -36,9 +36,9 @@ Open the URL printed by Vite, normally <http://localhost:5173>.
 
 ## Market data
 
-The app uses bundled CSH2 prices and euro overnight rates, so it does not contact
-financial-data providers while calculating. A cash flow uses the closing price on
-its date, or the latest earlier market close.
+The app uses bundled CSH2 prices, euro overnight rates, and a validated current-rate
+model, so it does not contact financial-data providers while calculating. A cash
+flow uses the closing price on its date, or the latest earlier market close.
 
 Refresh the bundled datasets with:
 
@@ -46,8 +46,9 @@ Refresh the bundled datasets with:
 npm run refresh-data
 ```
 
-You can refresh them separately with `npm run refresh-csh2` and
-`npm run refresh-overnight-rates`.
+You can refresh the source datasets separately with `npm run refresh-csh2` and
+`npm run refresh-overnight-rates`. Both commands regenerate and validate the shared
+current-rate model against the resulting pair of datasets.
 
 ## Development
 

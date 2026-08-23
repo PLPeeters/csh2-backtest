@@ -25,11 +25,21 @@ test('schedules CSH2 refreshes at midnight Tuesday through Saturday Brussels tim
 test('publishes changed refreshes through the reusable Pages workflow', async () => {
   const overnight = await workflow('refresh-overnight-rates.yml');
   const csh2 = await workflow('refresh-csh2.yml');
-  assert.match(overnight, /src\/assets\/data\/overnight-rates\.json/);
-  assert.match(csh2, /src\/assets\/data\/csh2-prices\.json/);
+  assert.match(overnight, /git diff --quiet -- src\/assets\/data\/overnight-rates\.json src\/assets\/data\/current-rate-model\.json/);
+  assert.match(overnight, /git add src\/assets\/data\/overnight-rates\.json src\/assets\/data\/current-rate-model\.json/);
+  assert.match(csh2, /git diff --quiet -- src\/assets\/data\/csh2-prices\.json src\/assets\/data\/current-rate-model\.json/);
+  assert.match(csh2, /git add src\/assets\/data\/csh2-prices\.json src\/assets\/data\/current-rate-model\.json/);
   for (const contents of [overnight, csh2]) assert.match(contents, /uses: \.\/\.github\/workflows\/pages\.yml/);
   const pages = await workflow('pages.yml');
   assert.match(pages, /workflow_call:/);
   assert.match(pages, /npm run verify/);
   assert.match(pages, /path: dist/);
+});
+
+test('independent refresh workflows keep their no-op path when neither source nor model changes', async () => {
+  for (const name of ['refresh-overnight-rates.yml', 'refresh-csh2.yml']) {
+    const contents = await workflow(name);
+    assert.match(contents, /if git diff --quiet --[^\n]+current-rate-model\.json; then\n\s+echo 'changed=false'/);
+    assert.match(contents, /if: needs\.refresh\.outputs\.changed == 'true'/);
+  }
 });

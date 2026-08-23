@@ -251,8 +251,8 @@ export function estimateConstantRateHoldingPeriods(prices, rates, valuationDate,
   };
 }
 
-/** Projects all cumulative-return lines through the last ongoing fidelity premium. */
-export function buildReturnProjection(flows, prices, rates, valuationDate, from, fidelityPremiums, options, { csh2AnnualRatePercent, baseAnnualRatePercent } = {}) {
+/** Projects the CSH2 and overnight lines through the last ongoing fidelity premium. */
+export function buildMarketReturnProjection(flows, prices, rates, valuationDate, from, fidelityPremiums, options, { csh2AnnualRatePercent } = {}) {
   const futurePremiums = fidelityPremiums.filter((premium) => premium.earnedDate > valuationDate).toSorted((left, right) => left.earnedDate.localeCompare(right.earnedDate));
   if (!futurePremiums.length) return undefined;
   const throughDate = futurePremiums.at(-1).earnedDate;
@@ -261,7 +261,6 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
   const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
   if (!externalInflows) return undefined;
   const outflows = flows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
-  const paidInterest = flows.filter((flow) => flow.type === 'inflow' && flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
   const projectionOptions = { ...options, accruedBaseInterest: 0 };
   const projectedPrices = { ...prices };
   const csh2 = [];
@@ -284,6 +283,24 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
     overnight.push({ date, value: ((overnightBalance + overnightPortfolio.outflows - overnightPortfolio.inflows) / overnightPortfolio.inflows) * 100 });
   }
 
+  return {
+    csh2,
+    overnight,
+    throughDate,
+    csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
+    overnightRatePercent: overnightPortfolio.latestRate
+  };
+}
+
+/** Projects only the savings-account line through the last ongoing fidelity premium. */
+export function buildProjectedAccountReturnSeries(flows, valuationDate, fidelityPremiums, options, { baseAnnualRatePercent } = {}) {
+  const futurePremiums = fidelityPremiums.filter((premium) => premium.earnedDate > valuationDate).toSorted((left, right) => left.earnedDate.localeCompare(right.earnedDate));
+  if (!futurePremiums.length) return undefined;
+  const throughDate = futurePremiums.at(-1).earnedDate;
+  const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
+  if (!externalInflows) return undefined;
+  const outflows = flows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
+  const paidInterest = flows.filter((flow) => flow.type === 'inflow' && flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
   const { account, baseRateIsAvailable } = projectAccountReturnSeries(
     futurePremiums,
     valuationDate,
@@ -295,14 +312,18 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
     baseAnnualRatePercent
   );
   return {
-    csh2,
-    overnight,
     account,
     throughDate,
-    csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
-    overnightRatePercent: overnightPortfolio.latestRate,
     ...(baseRateIsAvailable ? { baseAnnualRatePercent } : {})
   };
+}
+
+/** Projects all cumulative-return lines through the last ongoing fidelity premium. */
+export function buildReturnProjection(flows, prices, rates, valuationDate, from, fidelityPremiums, options, assumptions = {}) {
+  const market = buildMarketReturnProjection(flows, prices, rates, valuationDate, from, fidelityPremiums, options, assumptions);
+  const account = buildProjectedAccountReturnSeries(flows, valuationDate, fidelityPremiums, options, assumptions);
+  if (!market || !account) return undefined;
+  return { ...market, ...account };
 }
 
 /**

@@ -291,8 +291,7 @@ export function calculateCurrentRateModel(prices, rates, valuationDate, {
 }
 
 /** Returns diagnostics suitable for failing a refresh before degraded market data is committed. */
-export function assessCurrentRateModelHealth(prices, rates, valuationDate, overrides = {}) {
-  const model = calculateCurrentRateModel(prices, rates, valuationDate);
+export function assessCalculatedCurrentRateModelHealth(model, overrides = {}) {
   if (!model) return { healthy: false, issues: ['The current-rate model could not be calculated.'], model };
   const thresholds = {
     minimumValidationObservations,
@@ -319,8 +318,16 @@ export function assessCurrentRateModelHealth(prices, rates, valuationDate, overr
   return { healthy: !issues.length, issues, model };
 }
 
-export function assertCurrentRateModelHealthy(prices, rates, valuationDate, overrides) {
-  const assessment = assessCurrentRateModelHealth(prices, rates, valuationDate, overrides);
+export function assessCurrentRateModelHealth(prices, rates, valuationDate, overrides = {}) {
+  return assessCalculatedCurrentRateModelHealth(calculateCurrentRateModel(prices, rates, valuationDate), overrides);
+}
+
+export function assertCalculatedCurrentRateModelHealthy(model, overrides) {
+  const assessment = assessCalculatedCurrentRateModelHealth(model, overrides);
   if (!assessment.healthy) throw new Error(`Current-rate model health check failed: ${assessment.issues.join(' ')}`);
   return assessment.model;
+}
+
+export function assertCurrentRateModelHealthy(prices, rates, valuationDate, overrides) {
+  return assertCalculatedCurrentRateModelHealthy(calculateCurrentRateModel(prices, rates, valuationDate), overrides);
 }

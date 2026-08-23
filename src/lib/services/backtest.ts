@@ -1,6 +1,7 @@
-import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
+import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildMarketReturnProjection, buildOvernightBenchmarkReturnSeries, buildProjectedAccountReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
+import { getCurrentRateModel } from './current-rate-model-cache.mjs';
 
 function options(settings: CalculationSettings) {
   return {
@@ -19,72 +20,116 @@ function scenarioRate(model: ReturnType<typeof calculateCurrentRateModel>, scena
   return model.csh2AnnualRatePercent;
 }
 
-export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView {
-  const normalized = flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount: Number(amount), interestPayment }));
-  if (!normalized.length || normalized.some((flow) => !flow.date || !Number.isFinite(flow.amount) || flow.amount <= 0)) {
-    throw new Error('Add a date and a positive EUR amount to every cash flow.');
-  }
-  const investedFlows = normalized.filter((flow) => !flow.interestPayment);
-  const firstInvestment = investedFlows.filter((flow) => flow.type === 'inflow').toSorted((left, right) => left.date.localeCompare(right.date))[0];
-  if (!firstInvestment) throw new Error('Add at least one inflow that is not an interest payment.');
-  const accruedBaseInterest = Number(settings.accruedBaseInterest || 0);
-  if (!Number.isFinite(accruedBaseInterest) || accruedBaseInterest < 0) throw new Error('Accrued base interest must be a non-negative amount.');
-  const fidelityPremiums = settings.fidelityPremiums.map((premium) => ({
-    id: premium.id,
-    baseAmount: Number(premium.baseAmount),
-    earnedDate: premium.earnedDate,
-    finalPayoutAmount: Number(premium.finalPayoutAmount)
-  }));
-  if (fidelityPremiums.some((premium) => !Number.isFinite(premium.baseAmount) || premium.baseAmount <= 0)) throw new Error('Every fidelity premium needs a positive base amount.');
-  if (fidelityPremiums.some((premium) => !premium.earnedDate)) throw new Error('Every fidelity premium needs an earned date.');
-  if (fidelityPremiums.some((premium) => !Number.isFinite(premium.finalPayoutAmount) || premium.finalPayoutAmount <= 0)) throw new Error('Every fidelity premium needs a positive final payout amount.');
-  const valuationDate = latestAvailablePriceDate(market.data.prices, today);
-  if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
-  const calculationOptions = options(settings);
-  const currentRateModel = calculateCurrentRateModel(market.data.prices, market.rateData.rates, valuationDate);
-  const csh2AnnualRatePercent = scenarioRate(currentRateModel, settings.csh2RateScenario);
-  const projectionAssumption = { csh2AnnualRatePercent };
-  const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions);
-  const overnight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
-  const simulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions);
-  const firstPurchaseDate = simulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
-  const result = {
-    ...simulation,
-    fidelityPremiumAssessments: [],
-    observedHoldingPeriods: firstPurchaseDate
-      ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) }
-      : {}
-  } as BacktestResult;
-  const accountBaseRate = settings.accountBaseInterestRate === '' ? undefined : Number(settings.accountBaseInterestRate);
-  const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = Number.isFinite(accountBaseRate)
-    ? { baseAnnualRatePercent: accountBaseRate }
-    : {};
-  if (settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== '') {
-    accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
-  }
-  result.fidelityPremiumAssessments = assessFidelityPremiumTimings(
-    market.data.prices,
-    valuationDate,
-    calculationOptions,
-    fidelityPremiums,
-    { ...projectionAssumption, ...accountRates }
-  ) as BacktestResult['fidelityPremiumAssessments'];
-  result.breakEvenEstimate = estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption);
-  const projected = fidelityPremiums.length
-    ? buildReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, { ...projectionAssumption, ...accountRates })
-    : undefined;
-  return {
-    result,
-    metadata: market.data,
-    rateMetadata: market.rateData,
-    settings: { ...settings },
-    from: firstInvestment.date,
-    to: valuationDate,
-    returnSeries: {
-      csh2,
-      overnight,
-      account: buildAccountReturnSeries(normalized, valuationDate, calculationOptions),
-      projected
-    }
+interface StageEntry<T> { key: string; value: T }
+
+/** Owns one cached input per stage for one market dataset at a time. */
+export function createBacktestCalculator() {
+  let marketKey: string | undefined;
+  let observedStage: StageEntry<{
+    csh2: CalculationView['returnSeries']['csh2'];
+    overnight: CalculationView['returnSeries']['overnight'];
+    simulation: Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
+    observedHoldingPeriods: BacktestResult['observedHoldingPeriods'];
+  }> | undefined;
+  let accountHistoryStage: StageEntry<CalculationView['returnSeries']['account']> | undefined;
+  let scenarioStage: StageEntry<{
+    breakEvenEstimate: BacktestResult['breakEvenEstimate'];
+    marketProjection: ReturnType<typeof buildMarketReturnProjection>;
+  }> | undefined;
+  let projectedAccountStage: StageEntry<ReturnType<typeof buildProjectedAccountReturnSeries>> | undefined;
+
+  const clear = () => {
+    marketKey = undefined;
+    observedStage = undefined;
+    accountHistoryStage = undefined;
+    scenarioStage = undefined;
+    projectedAccountStage = undefined;
   };
+  const getStage = <T>(entry: StageEntry<T> | undefined, key: string, build: () => T): StageEntry<T> =>
+    entry?.key === key ? entry : { key, value: build() };
+
+  const calculate = (flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView => {
+    const normalized = flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount: Number(amount), interestPayment }));
+    if (!normalized.length || normalized.some((flow) => !flow.date || !Number.isFinite(flow.amount) || flow.amount <= 0)) throw new Error('Add a date and a positive EUR amount to every cash flow.');
+    const investedFlows = normalized.filter((flow) => !flow.interestPayment);
+    const firstInvestment = investedFlows.filter((flow) => flow.type === 'inflow').toSorted((left, right) => left.date.localeCompare(right.date))[0];
+    if (!firstInvestment) throw new Error('Add at least one inflow that is not an interest payment.');
+    const accruedBaseInterest = Number(settings.accruedBaseInterest || 0);
+    if (!Number.isFinite(accruedBaseInterest) || accruedBaseInterest < 0) throw new Error('Accrued base interest must be a non-negative amount.');
+    const fidelityPremiums = settings.fidelityPremiums.map((premium) => ({ id: premium.id, baseAmount: Number(premium.baseAmount), earnedDate: premium.earnedDate, finalPayoutAmount: Number(premium.finalPayoutAmount) }));
+    if (fidelityPremiums.some((premium) => !Number.isFinite(premium.baseAmount) || premium.baseAmount <= 0)) throw new Error('Every fidelity premium needs a positive base amount.');
+    if (fidelityPremiums.some((premium) => !premium.earnedDate)) throw new Error('Every fidelity premium needs an earned date.');
+    if (fidelityPremiums.some((premium) => !Number.isFinite(premium.finalPayoutAmount) || premium.finalPayoutAmount <= 0)) throw new Error('Every fidelity premium needs a positive final payout amount.');
+    const valuationDate = latestAvailablePriceDate(market.data.prices, today);
+    if (!valuationDate) throw new Error('The published CSH2 price data contains no closing prices.');
+
+    const nextMarketKey = JSON.stringify([market.version, market.data.cachedAt, market.rateData.cachedAt, valuationDate]);
+    if (marketKey !== nextMarketKey) {
+      clear();
+      marketKey = nextMarketKey;
+    }
+
+    const calculationOptions = options(settings);
+    const historicalKey = JSON.stringify([normalized, calculationOptions]);
+    observedStage = getStage(observedStage, historicalKey, () => {
+      const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions);
+      const overnight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
+      const simulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions) as Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
+      const firstPurchaseDate = simulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
+      return {
+        csh2,
+        overnight,
+        simulation,
+        observedHoldingPeriods: firstPurchaseDate ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) } : {}
+      };
+    });
+
+    const accountHistoryKey = JSON.stringify([normalized, valuationDate, accruedBaseInterest]);
+    accountHistoryStage = getStage(accountHistoryStage, accountHistoryKey, () => buildAccountReturnSeries(normalized, valuationDate, calculationOptions));
+
+    const currentRateModel = getCurrentRateModel(market.version, market.data.prices, market.rateData.rates, valuationDate, undefined, market.currentRateModel);
+    const csh2AnnualRatePercent = scenarioRate(currentRateModel, settings.csh2RateScenario);
+    const projectionAssumption = { csh2AnnualRatePercent };
+    const scenarioKey = JSON.stringify([historicalKey, fidelityPremiums, settings.csh2RateScenario]);
+    scenarioStage = getStage(scenarioStage, scenarioKey, () => ({
+      breakEvenEstimate: estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption),
+      marketProjection: fidelityPremiums.length ? buildMarketReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption) : undefined
+    }));
+
+    const accountBaseRate = settings.accountBaseInterestRate === '' ? undefined : Number(settings.accountBaseInterestRate);
+    const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = Number.isFinite(accountBaseRate) ? { baseAnnualRatePercent: accountBaseRate } : {};
+    if (settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== '') accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
+    const projectedAccountKey = JSON.stringify([normalized, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
+    projectedAccountStage = getStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates) : undefined);
+
+    const fidelityPremiumAssessments = assessFidelityPremiumTimings(market.data.prices, valuationDate, calculationOptions, fidelityPremiums, { ...projectionAssumption, ...accountRates }) as BacktestResult['fidelityPremiumAssessments'];
+    const projected = scenarioStage.value.marketProjection && projectedAccountStage.value ? { ...scenarioStage.value.marketProjection, ...projectedAccountStage.value } : undefined;
+    const result = {
+      ...observedStage.value.simulation,
+      fidelityPremiumAssessments,
+      observedHoldingPeriods: observedStage.value.observedHoldingPeriods,
+      breakEvenEstimate: scenarioStage.value.breakEvenEstimate
+    } as BacktestResult;
+    return {
+      result,
+      metadata: market.data,
+      rateMetadata: market.rateData,
+      settings: { ...settings },
+      from: firstInvestment.date,
+      to: valuationDate,
+      returnSeries: { csh2: observedStage.value.csh2, overnight: observedStage.value.overnight, account: accountHistoryStage.value, projected }
+    };
+  };
+
+  return { calculate, clear };
+}
+
+const backtestCalculator = createBacktestCalculator();
+
+export function calculateBacktest(flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView {
+  return backtestCalculator.calculate(flows, settings, market, today);
+}
+
+export function clearBacktestStageCache() {
+  backtestCalculator.clear();
 }

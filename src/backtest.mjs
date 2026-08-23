@@ -14,8 +14,8 @@ export {
   TOB_RATE
 } from './backtest/shared.mjs';
 export { runBacktest } from './backtest/simulation.mjs';
-export { assessCurrentRateModelHealth, assertCurrentRateModelHealthy, buildRelativeCsh2Series, calculateCurrentRateModel, CURRENT_RATE_EVALUATION_DAYS, CURRENT_RATE_LOOKBACK_DAYS, CURRENT_RATE_VALIDATION_START, fitRelativeExcess } from './backtest/current-rate.mjs';
-export { assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildCurrentRateEvolution, buildReturnProjection, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal } from './backtest/projections.mjs';
+export { assessCalculatedCurrentRateModelHealth, assessCurrentRateModelHealth, assertCalculatedCurrentRateModelHealthy, assertCurrentRateModelHealthy, buildRelativeCsh2Series, calculateCurrentRateModel, CURRENT_RATE_EVALUATION_DAYS, CURRENT_RATE_LOOKBACK_DAYS, CURRENT_RATE_VALIDATION_START, fitRelativeExcess } from './backtest/current-rate.mjs';
+export { assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildCurrentRateEvolution, buildMarketReturnProjection, buildProjectedAccountReturnSeries, buildReturnProjection, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal } from './backtest/projections.mjs';
 export {
   buildAccountReturnSeries,
   buildBacktestReturnSeries,

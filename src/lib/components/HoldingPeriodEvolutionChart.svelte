@@ -11,6 +11,14 @@
   let chart: IChartApi | undefined;
   let advantageSeries: ISeriesApi<'Baseline'> | undefined;
   let markersPlugin: ISeriesMarkersPluginApi<Time> | undefined;
+  let resizeFrame: number | undefined;
+  let fitFrame: number | undefined;
+  let pendingSize = { width: 0, height: 0 };
+  let chartSize = { width: 0, height: 0 };
+  let loadedPoints: EvolutionPoint[] | undefined;
+  let loadedPointsDate: string | undefined;
+  let loadedMarkers: EvolutionMarker[] | undefined;
+  let loadedMarkersDate: string | undefined;
 
   const dateForDay = (day: number) => new Date(Date.parse(`${valuationDate}T00:00:00Z`) + day * 86_400_000).toISOString().slice(0, 10);
   const advantageData = () => points.flatMap((point) =>
@@ -30,27 +38,62 @@
       size: 0.8
     }));
 
-  function updateChart() {
-    if (!chart || !advantageSeries || !markersPlugin) return;
-    chart.applyOptions({ width: Math.floor(host.clientWidth), height: Math.floor(host.clientHeight) });
-    advantageSeries.setData(advantageData());
-    markersPlugin.setMarkers(chartMarkers());
+  function scheduleFit() {
+    if (!chart || fitFrame !== undefined) return;
     chart.timeScale().fitContent();
-    requestAnimationFrame(() => chart?.timeScale().fitContent());
+    fitFrame = requestAnimationFrame(() => {
+      fitFrame = undefined;
+      chart?.timeScale().fitContent();
+    });
+  }
+
+  function updateData() {
+    if (!advantageSeries || (points === loadedPoints && valuationDate === loadedPointsDate)) return;
+    advantageSeries.setData(advantageData());
+    loadedPoints = points;
+    loadedPointsDate = valuationDate;
+    scheduleFit();
+  }
+
+  function updateMarkers() {
+    if (!markersPlugin || (markers === loadedMarkers && valuationDate === loadedMarkersDate)) return;
+    markersPlugin.setMarkers(chartMarkers());
+    loadedMarkers = markers;
+    loadedMarkersDate = valuationDate;
+    scheduleFit();
+  }
+
+  function scheduleResize(width: number, height: number) {
+    pendingSize = { width: Math.floor(width), height: Math.floor(height) };
+    if (pendingSize.width <= 0 || pendingSize.height <= 0 || resizeFrame !== undefined) return;
+    if (pendingSize.width === chartSize.width && pendingSize.height === chartSize.height) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = undefined;
+      if (!chart || (pendingSize.width === chartSize.width && pendingSize.height === chartSize.height)) return;
+      chartSize = pendingSize;
+      chart.resize(chartSize.width, chartSize.height);
+    });
   }
 
   let ariaLabel = $derived(`Net CSH2 advantage compared with your account in percent over ${maximumDays} days. ${markers.map((marker) => `${marker.label} after ${marker.day} days`).join('. ') || 'No markers within the projection'}.`);
 
   $effect(() => {
-    const inputs = { points, markers, maximumDays, valuationDate };
+    const inputs = { points, valuationDate };
     void inputs;
-    updateChart();
+    updateData();
+  });
+
+  $effect(() => {
+    const inputs = { markers, valuationDate };
+    void inputs;
+    updateMarkers();
   });
 
   onMount(() => {
+    chartSize = { width: Math.floor(host.clientWidth), height: Math.floor(host.clientHeight) };
     chart = createChart(host, {
-      width: host.clientWidth,
-      height: host.clientHeight,
+      width: chartSize.width,
+      height: chartSize.height,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#5b746c' },
       grid: { vertLines: { color: '#edf1ed' }, horzLines: { color: '#edf1ed' } },
       rightPriceScale: { borderColor: '#cbd8d1', scaleMargins: { top: 0.18, bottom: 0.18 } },
@@ -75,16 +118,25 @@
       priceFormat: { type: 'custom', formatter: (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%` }
     });
     markersPlugin = createSeriesMarkers(advantageSeries, [], { autoScale: true, zOrder: 'top' });
-    updateChart();
-    const observer = new ResizeObserver(() => requestAnimationFrame(updateChart));
+    updateData();
+    updateMarkers();
+    const observer = new ResizeObserver(([entry]) => scheduleResize(entry.contentRect.width, entry.contentRect.height));
     observer.observe(host);
     return () => {
       observer.disconnect();
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
+      resizeFrame = undefined;
+      fitFrame = undefined;
       markersPlugin?.detach();
       chart?.remove();
       chart = undefined;
       advantageSeries = undefined;
       markersPlugin = undefined;
+      loadedPoints = undefined;
+      loadedPointsDate = undefined;
+      loadedMarkers = undefined;
+      loadedMarkersDate = undefined;
     };
   });
 </script>

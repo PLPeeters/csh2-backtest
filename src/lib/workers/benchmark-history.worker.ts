@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateConstantRateHoldingPeriods } from '../../backtest.mjs';
 import type { BenchmarkHistoryRequest, BenchmarkPeriod, BenchmarkSeries } from '../types';
+import { compatiblePublishedCurrentRateModel } from '../services/current-rate-model-publication.mjs';
 
 const lookbackPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825 } as const;
 const forwardPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365 } as const;
@@ -23,7 +24,8 @@ function buildHistory(request: BenchmarkHistoryRequest, afterTax: boolean, apply
 
 self.onmessage = ({ data }: MessageEvent<BenchmarkHistoryRequest>) => {
   try {
-    const currentRateModel = calculateCurrentRateModel(data.prices, data.rates, data.to);
+    const currentRateModel = compatiblePublishedCurrentRateModel(data.currentRateModel, data.prices, data.rates, data.to) ??
+      calculateCurrentRateModel(data.prices, data.rates, data.to);
     self.postMessage({ ok: true, history: {
       gross: buildHistory(data, false),
       cgt: buildHistory(data, true),

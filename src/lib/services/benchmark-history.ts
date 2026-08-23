@@ -1,7 +1,13 @@
 import BenchmarkWorker from '../workers/benchmark-history.worker.ts?worker';
 import type { BenchmarkHistory, BenchmarkHistoryRequest } from '../types';
+import { currentRateModelSourceData } from './current-rate-model-publication.mjs';
 
 export interface BenchmarkHistoryClient { prepare(request: BenchmarkHistoryRequest): Promise<BenchmarkHistory>; dispose(): void }
+
+export function benchmarkHistoryRequestKey(request: BenchmarkHistoryRequest) {
+  const sourceData = currentRateModelSourceData(request.prices, request.rates);
+  return `${request.to}:${sourceData.prices}:${sourceData.rates}`;
+}
 
 export function createBenchmarkHistoryClient(): BenchmarkHistoryClient {
   let worker: Worker | undefined;
@@ -9,7 +15,7 @@ export function createBenchmarkHistoryClient(): BenchmarkHistoryClient {
   let cached: Promise<BenchmarkHistory> | undefined;
   return {
     prepare(request) {
-      const key = `${request.to}:${Object.keys(request.prices).length}:${Object.keys(request.rates).length}`;
+      const key = benchmarkHistoryRequestKey(request);
       if (cached && key === cacheKey) return cached;
       worker?.terminate();
       worker = new BenchmarkWorker();
