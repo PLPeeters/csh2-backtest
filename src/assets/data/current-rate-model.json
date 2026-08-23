@@ -84,7 +84,7 @@
         "from": "2023-05-23",
         "to": "2026-05-22",
         "observations": 766,
-        "maeAnnualRatePercent": 0.10396015082634967,
+        "maeAnnualRatePercent": 0.10396015082634975,
         "rollingYears": 3
       },
       {
@@ -106,14 +106,14 @@
         "from": "2023-05-23",
         "to": "2024-05-22",
         "observations": 256,
-        "maeAnnualRatePercent": 0.12394842731762447
+        "maeAnnualRatePercent": 0.12394842731762469
       },
       {
         "fullHistory": false,
         "from": "2022-05-23",
         "to": "2023-05-22",
         "observations": 257,
-        "maeAnnualRatePercent": 0.09782217924737166
+        "maeAnnualRatePercent": 0.0978221792473723
       },
       {
         "fullHistory": false,
@@ -141,14 +141,14 @@
         "from": "2018-05-23",
         "to": "2019-05-22",
         "observations": 255,
-        "maeAnnualRatePercent": 0.05830908832803841
+        "maeAnnualRatePercent": 0.05830908832803955
       },
       {
         "fullHistory": false,
         "from": "2017-05-23",
         "to": "2018-05-22",
         "observations": 254,
-        "maeAnnualRatePercent": 0.10580546166052522
+        "maeAnnualRatePercent": 0.10580546166052444
       },
       {
         "fullHistory": false,
@@ -169,7 +169,7 @@
         "from": "2015-09-09",
         "to": "2026-05-22",
         "observations": 2732,
-        "maeAnnualRatePercent": 0.07707111786993304
+        "maeAnnualRatePercent": 0.07707111786993318
       }
     ]
   }
