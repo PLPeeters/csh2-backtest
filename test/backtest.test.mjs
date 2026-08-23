@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -140,6 +140,97 @@ test('orders fidelity periods from least advanced to most advanced and resolves 
   assert.deepEqual(ordered.map((premium) => premium.id), ['lower-rate', 'higher-rate', 'earlier']);
 });
 
+test('reorders fidelity periods when an acquired premium starts its next period', () => {
+  const premiums = [
+    { id: 'september', baseAmount: 14506.08, earnedDate: '2026-09-08', finalPayoutAmount: 152.31 },
+    { id: 'august-small', baseAmount: 10.04, earnedDate: '2027-08-21', finalPayoutAmount: 0.11 },
+    { id: 'august-large', baseAmount: 18090.49, earnedDate: '2027-08-22', finalPayoutAmount: 199 }
+  ];
+
+  assert.deepEqual(
+    orderFidelityPremiumsForWithdrawal(premiums, '2026-08-23').map((premium) => premium.id),
+    ['august-large', 'august-small', 'september']
+  );
+  assert.deepEqual(
+    orderFidelityPremiumsForWithdrawal(premiums, '2026-09-09').map((premium) => premium.id),
+    ['september', 'august-large', 'august-small']
+  );
+});
+
+test('allocates chronological withdrawals after applying same-day premium acquisitions', () => {
+  const premiums = [
+    { id: 'september', baseAmount: 14506.08, earnedDate: '2026-09-08', finalPayoutAmount: 152.31 },
+    { id: 'august-small', baseAmount: 10.04, earnedDate: '2027-08-21', finalPayoutAmount: 0.11 },
+    { id: 'august-large', baseAmount: 18090.49, earnedDate: '2027-08-22', finalPayoutAmount: 199 }
+  ];
+  const plan = allocateFidelityWithdrawals(premiums, [
+    { id: 'withdraw-september', date: '2026-09-09', amount: 14506.08 },
+    { id: 'withdraw-small', date: '2027-08-22', amount: 10.04 },
+    { id: 'withdraw-large', date: '2027-08-23', amount: 18090.49 }
+  ]);
+
+  assert.deepEqual(plan.allocations, [
+    { withdrawalId: 'withdraw-september', trancheId: 'september', date: '2026-09-09', amount: 14506.08 },
+    { withdrawalId: 'withdraw-small', trancheId: 'august-large', date: '2027-08-22', amount: 10.04 },
+    { withdrawalId: 'withdraw-large', trancheId: 'august-large', date: '2027-08-23', amount: 18080.45 },
+    { withdrawalId: 'withdraw-large', trancheId: 'august-small', date: '2027-08-23', amount: 10.04 }
+  ]);
+  assert.deepEqual(plan.remaining.map(({ id, remainingAmount }) => ({ id, remainingAmount })), [
+    { id: 'september', remainingAmount: 0 },
+    { id: 'august-small', remainingAmount: 0 },
+    { id: 'august-large', remainingAmount: 0 }
+  ]);
+});
+
+test('exposes date-aware withdrawal allocations on the assessed tranches', () => {
+  const premiums = [
+    { id: 'september', baseAmount: 14506.08, earnedDate: '2026-09-08', finalPayoutAmount: 152.31 },
+    { id: 'august-small', baseAmount: 10.04, earnedDate: '2027-08-21', finalPayoutAmount: 0.11 },
+    { id: 'august-large', baseAmount: 18090.49, earnedDate: '2027-08-22', finalPayoutAmount: 199 }
+  ];
+  const assessments = assessFidelityPremiumTimings({ '2026-08-23': 100 }, '2026-08-23', {}, premiums, {
+    csh2AnnualRatePercent: 1.99,
+    baseAnnualRatePercent: 0.5,
+    fidelityPremiumPercent: 1
+  });
+
+  assert.deepEqual(assessments.map(({ recommendation }) => recommendation), [
+    'move after payout', 'move after payout', 'move after payout'
+  ]);
+  assert.deepEqual(assessments.map(({ id, transferDate }) => ({ id, transferDate })), [
+    { id: 'september', transferDate: '2026-09-09' },
+    { id: 'august-small', transferDate: '2027-08-22' },
+    { id: 'august-large', transferDate: '2027-08-23' }
+  ]);
+  const tinyAssessment = assessments.find((assessment) => assessment.id === 'august-small');
+  assert.equal(Number((tinyAssessment.nextYearCsh2Value - tinyAssessment.nextYearAccountValue).toFixed(2)), 0.01);
+  assert.deepEqual(assessments.map(({ id, transferAllocations }) => ({ id, transferAllocations })), [
+    { id: 'september', transferAllocations: [{ date: '2026-09-09', amount: 14506.08 }] },
+    { id: 'august-small', transferAllocations: [{ date: '2027-08-23', amount: 10.04 }] },
+    { id: 'august-large', transferAllocations: [
+      { date: '2027-08-22', amount: 10.04 },
+      { date: '2027-08-23', amount: 18080.45 }
+    ] }
+  ]);
+});
+
+test('does not pull later tranches forward when their current premiums remain more valuable', () => {
+  const future = [
+    { id: 'august-small', baseAmount: 10.04, earnedDate: '2027-08-21', finalPayoutAmount: 0.11 },
+    { id: 'august-large', baseAmount: 18090.49, earnedDate: '2027-08-22', finalPayoutAmount: 199 }
+  ].map((premium) => assessFidelityPremiumTiming({ '2026-09-09': 100 }, '2026-09-09', {}, premium, {
+    csh2AnnualRatePercent: 2,
+    baseAnnualRatePercent: 0.56,
+    fidelityPremiumPercent: 1.1
+  }));
+
+  assert.deepEqual(future.map(({ id, currentPeriodPreferred }) => ({ id, currentPeriodPreferred })), [
+    { id: 'august-small', currentPeriodPreferred: 'wait' },
+    { id: 'august-large', currentPeriodPreferred: 'wait' }
+  ]);
+  assert.equal(future[1].currentPeriodDifference, -30.06);
+});
+
 test('combines same-day fidelity transfers into one CSH2 purchase', () => {
   const projection = { csh2AnnualRatePercent: 20, baseAnnualRatePercent: 1, fidelityPremiumPercent: 1 };
   const premiums = [
@@ -154,6 +245,30 @@ test('combines same-day fidelity transfers into one CSH2 purchase', () => {
   assert.equal(combined[1].purchaseGroupSize, 2);
   assert.ok(combined.reduce((sum, assessment) => sum + assessment.nextYearCsh2Value, 0) >
     separate.reduce((sum, assessment) => sum + assessment.nextYearCsh2Value, 0));
+});
+
+test('assumes earlier accepted transfers exist when assessing a later fidelity transfer', () => {
+  const projection = { csh2AnnualRatePercent: 8, baseAnnualRatePercent: 0.5, fidelityPremiumPercent: 1 };
+  const options = { brokerTransactionFee: 1 };
+  const premiums = [
+    { id: 'first', baseAmount: 500, earnedDate: '2026-04-02', finalPayoutAmount: 5 },
+    { id: 'later', baseAmount: 20, earnedDate: '2026-05-02', finalPayoutAmount: 0.2 }
+  ];
+  const laterAlone = assessFidelityPremiumTiming({ '2026-03-02': 100 }, '2026-03-02', options, premiums[1], projection);
+  const planned = assessFidelityPremiumTimings({ '2026-03-02': 100 }, '2026-03-02', options, premiums, projection);
+  const laterPlanned = planned.find((assessment) => assessment.id === 'later');
+
+  assert.equal(laterAlone.recommendation, 'keep in account');
+  assert.equal(laterAlone.nextYearCsh2Value, 19.32);
+  assert.equal(laterPlanned.recommendation, 'move after payout');
+  assert.equal(laterPlanned.nextYearCsh2Value, 20.32);
+  assert.equal(laterPlanned.nextYearAccountValue, 20.3);
+});
+
+test('returns an empty, UI-safe aggregate assessment when there are no fidelity premiums', () => {
+  assert.deepEqual(assessFidelityPremiumTimings(
+    { '2026-03-02': 100 }, '2026-03-02', {}, [], { csh2AnnualRatePercent: 8 }
+  ), []);
 });
 
 test('fidelity timing always uses fractional shares', () => {

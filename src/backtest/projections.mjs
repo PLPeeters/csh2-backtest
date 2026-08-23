@@ -380,11 +380,53 @@ export function assessFidelityPremiumTiming(prices, valuationDate, options, prem
   };
 }
 
+function fidelityPeriodOn(premium, date) {
+  let periodStartDate = dateAfterCalendarYears(premium.earnedDate, -1);
+  let nextEarnedDate = premium.earnedDate;
+  while (nextEarnedDate <= date) {
+    periodStartDate = nextEarnedDate;
+    nextEarnedDate = dateAfterCalendarYears(nextEarnedDate, 1);
+  }
+  return { periodStartDate, nextEarnedDate, daysAdvanced: daysBetween(periodStartDate, date) };
+}
+
 /** Orders ongoing periods as a regulated savings-account withdrawal would: least advanced first, then lowest premium rate. */
-export function orderFidelityPremiumsForWithdrawal(fidelityPremiums) {
+export function orderFidelityPremiumsForWithdrawal(fidelityPremiums, asOfDate) {
   return fidelityPremiums.toSorted((left, right) =>
-    right.earnedDate.localeCompare(left.earnedDate) ||
+    (asOfDate
+      ? fidelityPeriodOn(left, asOfDate).daysAdvanced - fidelityPeriodOn(right, asOfDate).daysAdvanced
+      : right.earnedDate.localeCompare(left.earnedDate)) ||
     (left.finalPayoutAmount / left.baseAmount) - (right.finalPayoutAmount / right.baseAmount));
+}
+
+/** Applies dated cash withdrawals to the tranches that legally supply them on each date. */
+export function allocateFidelityWithdrawals(fidelityPremiums, withdrawals) {
+  const remaining = fidelityPremiums.map((premium) => ({ ...premium, remainingAmount: euro(premium.baseAmount) }));
+  const allocations = [];
+  const chronological = withdrawals.map((withdrawal, index) => ({ ...withdrawal, index }))
+    .toSorted((left, right) => left.date.localeCompare(right.date) || left.index - right.index);
+
+  for (const withdrawal of chronological) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(withdrawal.date)) throw new Error('Every fidelity withdrawal needs a valid date.');
+    if (!Number.isFinite(withdrawal.amount) || withdrawal.amount <= 0) throw new Error('Every fidelity withdrawal needs a positive amount.');
+    let amountLeft = euro(withdrawal.amount);
+    const available = euro(remaining.reduce((sum, tranche) => sum + tranche.remainingAmount, 0));
+    if (amountLeft > available) throw new Error('A fidelity withdrawal cannot exceed the remaining account balance.');
+
+    const ordered = orderFidelityPremiumsForWithdrawal(
+      remaining.filter((tranche) => tranche.remainingAmount > 0),
+      withdrawal.date
+    );
+    for (const tranche of ordered) {
+      if (amountLeft <= 0) break;
+      const amount = Math.min(amountLeft, tranche.remainingAmount);
+      tranche.remainingAmount = euro(tranche.remainingAmount - amount);
+      amountLeft = euro(amountLeft - amount);
+      allocations.push({ withdrawalId: withdrawal.id, trancheId: tranche.id, date: withdrawal.date, amount });
+    }
+  }
+
+  return { allocations, remaining };
 }
 
 /** Orders finished recommendations by their next action date, with indefinite keep decisions last. */
@@ -405,47 +447,71 @@ export function orderFidelityAssessmentsByRecommendation(assessments, valuationD
 export function assessFidelityPremiumTimings(prices, valuationDate, options, fidelityPremiums, projection = {}) {
   const assessments = orderFidelityPremiumsForWithdrawal(fidelityPremiums)
     .map((premium) => assessFidelityPremiumTiming(prices, valuationDate, options, premium, projection))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((assessment) => ({ ...assessment, transferAllocations: [] }));
   const projectionRate = projectedCsh2Growth(prices, valuationDate, projection.csh2AnnualRatePercent);
   if (!projectionRate) return assessments;
   const scenarioOptions = { ...options, accruedBaseInterest: 0, buyWholeSharesOnly: false };
-  const groups = Map.groupBy(assessments.filter((assessment) => assessment.recommendation === 'move now' || assessment.recommendation === 'move after payout'),
-    (assessment) => assessment.recommendation === 'move now' ? projectionRate.valuation.date : assessment.transferDate);
-
-  for (const [transferDate, group] of groups) {
-    if (!transferDate || group.length < 2) continue;
-    const combinedBaseAmount = group.reduce((sum, assessment) => sum + assessment.baseAmount, 0);
-    if (transferDate === projectionRate.valuation.date) {
-      for (const assessment of group) {
-        const days = daysBetween(projectionRate.valuation.date, assessment.earnedDate);
-        const projectedPrices = { ...prices, [assessment.earnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
-        const combined = runBacktest([{ date: transferDate, type: 'inflow', amount: combinedBaseAmount }], projectedPrices, assessment.earnedDate, scenarioOptions);
-        assessment.immediateValue = euro(combined.netLiquidationValue * assessment.baseAmount / combinedBaseAmount);
-        assessment.currentPeriodDifference = euro(assessment.immediateValue - assessment.waitingValue);
-        assessment.currentPeriodPreferred = assessment.currentPeriodDifference > 0.005 ? 'move now' : assessment.currentPeriodDifference < -0.005 ? 'wait' : 'either';
-        assessment.recommendation = assessment.currentPeriodPreferred === 'move now' ? 'move now' : assessment.currentPeriodPreferred === 'wait' ? 'wait, then reassess' : 'either';
-      }
-      const movingGroup = group.filter((assessment) => assessment.recommendation === 'move now');
-      if (movingGroup.length > 1) for (const assessment of movingGroup) assessment.purchaseGroupSize = movingGroup.length;
-      continue;
+  const immediateGroup = assessments.filter((assessment) => assessment.recommendation === 'move now');
+  if (immediateGroup.length > 1) {
+    const combinedBaseAmount = immediateGroup.reduce((sum, assessment) => sum + assessment.baseAmount, 0);
+    for (const assessment of immediateGroup) {
+      const days = daysBetween(projectionRate.valuation.date, assessment.earnedDate);
+      const projectedPrices = { ...prices, [assessment.earnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
+      const combined = runBacktest([{ date: projectionRate.valuation.date, type: 'inflow', amount: combinedBaseAmount }], projectedPrices, assessment.earnedDate, scenarioOptions);
+      assessment.immediateValue = euro(combined.netLiquidationValue * assessment.baseAmount / combinedBaseAmount);
+      assessment.currentPeriodDifference = euro(assessment.immediateValue - assessment.waitingValue);
+      assessment.currentPeriodPreferred = assessment.currentPeriodDifference > 0.005 ? 'move now' : assessment.currentPeriodDifference < -0.005 ? 'wait' : 'either';
+      assessment.recommendation = assessment.currentPeriodPreferred === 'move now' ? 'move now' : assessment.currentPeriodPreferred === 'wait' ? 'wait, then reassess' : 'either';
     }
+  }
 
+  const acceptedImmediate = immediateGroup.filter((assessment) => assessment.recommendation === 'move now');
+  if (acceptedImmediate.length > 1) for (const assessment of acceptedImmediate) assessment.purchaseGroupSize = acceptedImmediate.length;
+  const acceptedFlows = acceptedImmediate.length
+    ? [{ date: projectionRate.valuation.date, type: 'inflow', amount: acceptedImmediate.reduce((sum, assessment) => sum + assessment.baseAmount, 0) }]
+    : [];
+  const futureGroups = [...Map.groupBy(
+    assessments.filter((assessment) => assessment.currentPeriodPreferred === 'wait' && assessment.transferDate && assessment.nextYearAccountValue !== undefined),
+    (assessment) => assessment.transferDate
+  )].toSorted(([left], [right]) => left.localeCompare(right));
+
+  for (const [transferDate, group] of futureGroups) {
+    const combinedBaseAmount = group.reduce((sum, assessment) => sum + assessment.baseAmount, 0);
     const nextEarnedDate = dateAfterCalendarYears(transferDate, 1);
-    const transferDays = daysBetween(projectionRate.valuation.date, transferDate);
-    const nextDays = daysBetween(projectionRate.valuation.date, nextEarnedDate);
-    const projectedPrices = {
-      ...prices,
-      [transferDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** transferDays },
-      [nextEarnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** nextDays }
-    };
-    const combined = runBacktest([{ date: transferDate, type: 'inflow', amount: combinedBaseAmount }], projectedPrices, nextEarnedDate, scenarioOptions);
-    const combinedAccountValue = group.reduce((sum, assessment) => sum + (assessment.nextYearAccountValue ?? 0), 0);
-    const recommendation = combined.netLiquidationValue > combinedAccountValue + 0.005 ? 'move after payout' : 'keep in account';
+    const projectedPrices = { ...prices };
+    for (const date of [...acceptedFlows.map((flow) => flow.date), transferDate, nextEarnedDate]) {
+      const days = daysBetween(projectionRate.valuation.date, date);
+      projectedPrices[date] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days };
+    }
+    const priorPlanValue = runBacktest(acceptedFlows, projectedPrices, nextEarnedDate, scenarioOptions).netLiquidationValue;
+    const candidateFlow = { date: transferDate, type: 'inflow', amount: combinedBaseAmount };
+    const candidatePlanValue = runBacktest([...acceptedFlows, candidateFlow], projectedPrices, nextEarnedDate, scenarioOptions).netLiquidationValue;
+    const marginalCsh2Value = euro(candidatePlanValue - priorPlanValue);
+    const combinedAccountValue = group.reduce((sum, assessment) => sum + assessment.nextYearAccountValue, 0);
+    const recommendation = marginalCsh2Value > combinedAccountValue + 0.005 ? 'move after payout' : 'keep in account';
     for (const assessment of group) {
-      assessment.nextYearCsh2Value = euro(combined.netLiquidationValue * assessment.baseAmount / combinedBaseAmount);
+      assessment.nextYearCsh2Value = euro(marginalCsh2Value * assessment.baseAmount / combinedBaseAmount);
       assessment.recommendation = recommendation;
       if (recommendation === 'move after payout') assessment.purchaseGroupSize = group.length;
     }
+    if (recommendation === 'move after payout') acceptedFlows.push(candidateFlow);
+  }
+
+  const withdrawals = assessments.flatMap((assessment) => {
+    if (assessment.recommendation === 'move now') {
+      return [{ id: assessment.id, date: projectionRate.valuation.date, amount: assessment.baseAmount }];
+    }
+    if (assessment.recommendation === 'move after payout' && assessment.transferDate) {
+      return [{ id: assessment.id, date: assessment.transferDate, amount: assessment.baseAmount }];
+    }
+    return [];
+  });
+  const { allocations } = allocateFidelityWithdrawals(fidelityPremiums, withdrawals);
+  for (const assessment of assessments) {
+    assessment.transferAllocations = allocations
+      .filter((allocation) => allocation.trancheId === assessment.id)
+      .map(({ date, amount }) => ({ date, amount }));
   }
   return orderFidelityAssessmentsByRecommendation(assessments, valuationDate);
 }

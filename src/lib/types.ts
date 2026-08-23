@@ -75,6 +75,7 @@ export interface FidelityPremiumAssessment {
   currentPeriodPreferred: 'move now' | 'wait' | 'either'; currentPeriodDifference: number;
   immediateValue: number; waitingValue: number; csh2AnnualRatePercent: number;
   recommendation: 'move now' | 'move after payout' | 'keep in account' | 'wait, then reassess' | 'either'; transferDate?: string;
+  transferAllocations: { date: string; amount: number }[];
   nextYearCsh2Value?: number; nextYearAccountValue?: number;
   purchaseGroupSize?: number;
 }
