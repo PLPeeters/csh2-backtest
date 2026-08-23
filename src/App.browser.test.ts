@@ -225,7 +225,7 @@ describe('CSH2 application inputs', () => {
     await page.getByLabelText('Date').nth(1).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
 
-    await expect.element(page.getByText('11 months and 1 day', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('24 days', { exact: true })).toBeVisible();
   });
 
   it('recovers malformed storage and preserves the CGT preference while Reynders Tax is active', async () => {

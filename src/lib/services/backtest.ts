@@ -80,7 +80,7 @@ export function createBacktestCalculator() {
         csh2,
         overnight,
         simulation,
-        observedHoldingPeriods: firstPurchaseDate ? { from: firstInvestment.date, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstInvestment.date) } : {}
+        observedHoldingPeriods: firstPurchaseDate ? { from: firstPurchaseDate, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstPurchaseDate) } : {}
       };
     });
 
