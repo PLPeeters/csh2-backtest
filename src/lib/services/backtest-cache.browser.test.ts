@@ -29,6 +29,22 @@ describe('bounded backtest stage cache', () => {
     clearBacktestStageCache();
   });
 
+  it('withholds fidelity timing without a valid base rate and accepts an explicit zero rate', () => {
+    const calculator = createBacktestCalculator();
+    const missing = calculator.calculate(flows, changedSettings({ accountBaseInterestRate: '' }), market, '2026-08-20');
+    const blank = calculator.calculate(flows, changedSettings({ accountBaseInterestRate: ' ' }), market, '2026-08-20');
+    const invalid = calculator.calculate(flows, changedSettings({ accountBaseInterestRate: 'not-a-rate' }), market, '2026-08-20');
+    const zero = calculator.calculate(flows, changedSettings({ accountBaseInterestRate: '0' }), market, '2026-08-20');
+
+    expect(missing.result.fidelityPremiumAssessments).toEqual([]);
+    expect(blank.result.fidelityPremiumAssessments).toEqual([]);
+    expect(invalid.result.fidelityPremiumAssessments).toEqual([]);
+    expect(missing.returnSeries.projected).toBeUndefined();
+    expect(invalid.returnSeries.projected).toBeUndefined();
+    expect(zero.result.fidelityPremiumAssessments).toHaveLength(1);
+    expect(zero.result.fidelityPremiumAssessments[0].waitingValue).toBeGreaterThan(0);
+  });
+
   it('reuses observed and scenario-independent projection history for account-rate-only changes', () => {
     const calculator = createBacktestCalculator();
     const initial = calculator.calculate(flows, settings, market, '2026-08-20');

@@ -202,6 +202,9 @@ describe('CSH2 application inputs', () => {
     await expect.element(calculate).toBeDisabled();
     await payoutAmount.fill('12.50');
     await earnedDate.click();
+    await expect.element(calculate).toBeDisabled();
+    await page.getByLabelText('Base annual rate (%)').fill('0');
+    await page.getByLabelText('Fidelity premium 1 base amount in euro').click();
     await expect.element(calculate).toBeEnabled();
     await page.getByRole('button', { name: 'Add fidelity premium' }).click();
     await expect.element(page.getByLabelText('Fidelity premium 2 base amount in euro')).toBeVisible();
@@ -403,6 +406,43 @@ describe('CSH2 application inputs', () => {
     await older;
 
     expect(controller.view?.settings.accountBaseInterestRate).toBe('2.5');
+    expect(controller.status.kind).toBe('success');
+  });
+
+  it('removes a stale fidelity timing assessment when the base rate is cleared', async () => {
+    const market = { data: { cachedAt: '2026-08-09T00:00:00Z', prices: {} }, rateData: { rates: {} }, version: 'test' } as MarketDataBundle;
+    const controller = createBacktestController({
+      storage: localStorage,
+      today: () => '2026-08-09',
+      loadMarketData: async () => market,
+      calculate: (_flows, calculationSettings) => ({
+        settings: { ...calculationSettings },
+        result: {
+          valuation: { date: '2026-08-08' },
+          fidelityPremiumAssessments: calculationSettings.accountBaseInterestRate === '' ? [] : [{ id: 'premium-1' }]
+        },
+        metadata: market.data,
+        rateMetadata: market.rateData,
+        returnSeries: { csh2: [], overnight: [], account: [] },
+        from: '2026-01-02',
+        to: '2026-08-08'
+      }) as unknown as CalculationView,
+      prepareBenchmark: async () => ({}) as never
+    });
+    controller.replaceFlows([{ id: createFlowId(), date: '2026-01-02', type: 'inflow', amount: '1000', interestPayment: false }]);
+    controller.addFidelityPremium();
+    const premium = controller.settings.fidelityPremiums[0];
+    controller.updateFidelityPremium(premium.id, 'baseAmount', '500');
+    controller.updateFidelityPremium(premium.id, 'earnedDate', '2027-03-01');
+    controller.updateFidelityPremium(premium.id, 'finalPayoutAmount', '7.50');
+    controller.updateSetting('accountBaseInterestRate', '0');
+    await controller.calculate();
+
+    expect(controller.view?.result.fidelityPremiumAssessments).toHaveLength(1);
+    await controller.setAccountRate('accountBaseInterestRate', '');
+
+    expect(controller.view?.settings.accountBaseInterestRate).toBe('');
+    expect(controller.view?.result.fidelityPremiumAssessments).toEqual([]);
     expect(controller.status.kind).toBe('success');
   });
 });

@@ -38,6 +38,9 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
 function interestSettingsAreValid(settings: CalculationSettings) {
   const accruedInterest = Number(settings.accruedBaseInterest || 0);
   if (!Number.isFinite(accruedInterest) || accruedInterest < 0) return false;
+  const baseRateInput = settings.accountBaseInterestRate.trim();
+  const baseRate = baseRateInput === '' ? undefined : Number(baseRateInput);
+  if (settings.fidelityPremiums.length && (!Number.isFinite(baseRate) || baseRate! <= -100)) return false;
   return settings.fidelityPremiums.every((premium) => Number.isFinite(Number(premium.baseAmount)) && Number(premium.baseAmount) > 0 &&
     !!premium.earnedDate && Number.isFinite(Number(premium.finalPayoutAmount)) && Number(premium.finalPayoutAmount) > 0);
 }

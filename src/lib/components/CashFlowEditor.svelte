@@ -104,6 +104,7 @@
       <div class="controls premium-controls"><button class="quiet" type="button" onclick={() => controller.addFidelityPremium()}>Add fidelity premium</button></div>
       {#if controller.settings.fidelityPremiums.length}
         <p class="interest-help premium-help">
+          Enter the account's base annual rate to compare whether transferring now or waiting is better.<br>
           <b>Base amount</b> is the balance earning the premium.<br>
           <b>Premium earned on</b> is the date the premium becomes yours.<br>
           <b>Final premium payout</b> is the premium attributable to that base amount once earned.</p>

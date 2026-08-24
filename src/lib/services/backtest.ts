@@ -96,13 +96,19 @@ export function createBacktestCalculator() {
       marketProjection: fidelityPremiums.length ? buildMarketReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption) : undefined
     }));
 
-    const accountBaseRate = settings.accountBaseInterestRate === '' ? undefined : Number(settings.accountBaseInterestRate);
-    const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = Number.isFinite(accountBaseRate) ? { baseAnnualRatePercent: accountBaseRate } : {};
-    if (settings.accountBaseInterestRate !== '' && settings.accountFidelityPremium !== '') accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
+    const accountBaseRateInput = settings.accountBaseInterestRate.trim();
+    const accountBaseRate = accountBaseRateInput === '' ? undefined : Number(accountBaseRateInput);
+    const accountBaseRateIsValid = Number.isFinite(accountBaseRate) && accountBaseRate! > -100;
+    const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = accountBaseRateIsValid ? { baseAnnualRatePercent: accountBaseRate } : {};
+    if (accountBaseRateInput !== '' && settings.accountFidelityPremium !== '') accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
     const projectedAccountKey = JSON.stringify([normalized, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
-    projectedAccountStage = getStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates) : undefined);
+    projectedAccountStage = getStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length && accountBaseRateIsValid
+      ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates)
+      : undefined);
 
-    const fidelityPremiumAssessments = assessFidelityPremiumTimings(market.data.prices, valuationDate, calculationOptions, fidelityPremiums, { ...projectionAssumption, ...accountRates }) as BacktestResult['fidelityPremiumAssessments'];
+    const fidelityPremiumAssessments = fidelityPremiums.length && !accountBaseRateIsValid
+      ? []
+      : assessFidelityPremiumTimings(market.data.prices, valuationDate, calculationOptions, fidelityPremiums, { ...projectionAssumption, ...accountRates }) as BacktestResult['fidelityPremiumAssessments'];
     const projected = scenarioStage.value.marketProjection && projectedAccountStage.value ? { ...scenarioStage.value.marketProjection, ...projectedAccountStage.value } : undefined;
     const result = {
       ...observedStage.value.simulation,

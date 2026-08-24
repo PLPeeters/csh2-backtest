@@ -336,15 +336,14 @@ export function assessFidelityPremiumTiming(prices, valuationDate, options, prem
   if (!Number.isFinite(finalPayoutAmount) || finalPayoutAmount <= 0) throw new Error('Every fidelity premium needs a positive final payout amount.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(earnedDate)) throw new Error('Every fidelity premium needs a valid earned date.');
   if (earnedDate <= valuationDate) throw new Error('Every fidelity premium earned date must be after the latest CSH2 valuation date.');
+  if (!Number.isFinite(baseAnnualRatePercent) || baseAnnualRatePercent <= -100) throw new Error('Enter a valid account base annual rate before assessing fidelity premium timing.');
   const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
   if (!projectionRate) return undefined;
   const days = daysBetween(projectionRate.valuation.date, earnedDate);
   const projectedPrices = { ...prices, [earnedDate]: { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** days } };
   const scenarioOptions = { ...options, accruedBaseInterest: 0, buyWholeSharesOnly: false };
   const immediate = runBacktest([{ date: projectionRate.valuation.date, type: 'inflow', amount: baseAmount }], projectedPrices, earnedDate, scenarioOptions);
-  const baseGrowthFactor = Number.isFinite(baseAnnualRatePercent) && baseAnnualRatePercent > -100
-    ? (1 + baseAnnualRatePercent / 100) ** (days / 365)
-    : 1;
+  const baseGrowthFactor = (1 + baseAnnualRatePercent / 100) ** (days / 365);
   const waitingValue = euro(baseAmount * baseGrowthFactor + finalPayoutAmount);
   const currentPeriodDifference = euro(immediate.netLiquidationValue - waitingValue);
   const currentPeriodPreferred = currentPeriodDifference > 0.005 ? 'move now' : currentPeriodDifference < -0.005 ? 'wait' : 'either';

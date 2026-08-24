@@ -105,12 +105,23 @@ test('rejects marking an outflow as an interest payment', () => {
 
 test('compares moving a fidelity-premium principal now with waiting until it is earned', () => {
   const premium = { id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 };
-  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, premium, { csh2AnnualRatePercent: 100 });
+  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, premium, { csh2AnnualRatePercent: 100, baseAnnualRatePercent: 0 });
   assert.equal(assessment.recommendation, 'move now');
   assert.ok(assessment.immediateValue > assessment.waitingValue);
   assert.equal(assessment.csh2AnnualRatePercent, 100);
-  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, finalPayoutAmount: 0 }, { csh2AnnualRatePercent: 8 }), /positive final payout/);
-  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, earnedDate: '2026-03-02' }, { csh2AnnualRatePercent: 8 }), /must be after/);
+  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, finalPayoutAmount: 0 }, { csh2AnnualRatePercent: 8, baseAnnualRatePercent: 0 }), /positive final payout/);
+  assert.throws(() => assessFidelityPremiumTiming(prices, '2026-03-02', {}, { ...premium, earnedDate: '2026-03-02' }, { csh2AnnualRatePercent: 8, baseAnnualRatePercent: 0 }), /must be after/);
+});
+
+test('requires an explicit valid base rate for fidelity timing while accepting zero percent', () => {
+  const premium = { id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50 };
+  assert.throws(
+    () => assessFidelityPremiumTiming(prices, '2026-03-02', {}, premium, { csh2AnnualRatePercent: 8 }),
+    /valid account base annual rate/
+  );
+  assert.doesNotThrow(() => assessFidelityPremiumTiming(
+    prices, '2026-03-02', {}, premium, { csh2AnnualRatePercent: 8, baseAnnualRatePercent: 0 }
+  ));
 });
 
 test('includes base-rate accrual in the account value while waiting for a fidelity premium', () => {
@@ -273,8 +284,8 @@ test('returns an empty, UI-safe aggregate assessment when there are no fidelity 
 
 test('fidelity timing always uses fractional shares', () => {
   const premium = { id: 'premium-1', baseAmount: 150, earnedDate: '2026-04-02', finalPayoutAmount: 1 };
-  const fractional = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: false }, premium, { csh2AnnualRatePercent: 20 });
-  const globallyWhole = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: true }, premium, { csh2AnnualRatePercent: 20 });
+  const fractional = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: false }, premium, { csh2AnnualRatePercent: 20, baseAnnualRatePercent: 0 });
+  const globallyWhole = assessFidelityPremiumTiming(prices, '2026-03-02', { buyWholeSharesOnly: true }, premium, { csh2AnnualRatePercent: 20, baseAnnualRatePercent: 0 });
   assert.equal(globallyWhole.immediateValue, fractional.immediateValue);
   assert.equal(globallyWhole.currentPeriodDifference, fractional.currentPeriodDifference);
 });
