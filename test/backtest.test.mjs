@@ -5,6 +5,18 @@ import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFideli
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
+function assertCurrentRateModelNumbersAreRounded(value) {
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value)) assert.equal(value, Number(value.toFixed(8)));
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(assertCurrentRateModelNumbersAreRounded);
+    return;
+  }
+  if (value && typeof value === 'object') Object.values(value).forEach(assertCurrentRateModelNumbersAreRounded);
+}
+
 test('deducts TOB on inflow and estimates terminal taxes', () => {
   const result = runBacktest([{ date: '2026-01-02', type: 'inflow', amount: 1000 }], prices, '2026-03-02');
   assert.equal(result.paidTob, 1.2);
@@ -479,9 +491,9 @@ test('combines current overnight rate with CSH2 excess over the same trailing wi
   assert.ok(estimate);
   assert.equal(estimate.trendDays, 90);
   assert.equal(estimate.trendStartDate, '2026-01-01');
-  assert.ok(Math.abs(estimate.currentOvernightAnnualRatePercent - (currentOvernightAnnualFactor - 1) * 100) < 1e-10);
-  assert.ok(Math.abs(estimate.csh2AnnualRatePercent - (expectedCsh2AnnualFactor - 1) * 100) < 1e-10);
-  assert.ok(Math.abs(estimate.csh2ExcessAnnualRatePercent - (observedCsh2AnnualFactor / historicalOvernightAnnualFactor - 1) * 100) < 1e-10);
+  assert.ok(Math.abs(estimate.currentOvernightAnnualRatePercent - (currentOvernightAnnualFactor - 1) * 100) < 1e-8);
+  assert.ok(Math.abs(estimate.csh2AnnualRatePercent - (expectedCsh2AnnualFactor - 1) * 100) < 1e-8);
+  assert.ok(Math.abs(estimate.csh2ExcessAnnualRatePercent - (observedCsh2AnnualFactor / historicalOvernightAnnualFactor - 1) * 100) < 1e-8);
 });
 
 test('calculates the regression model and annual MAE periods dynamically from published history', async () => {
@@ -492,6 +504,7 @@ test('calculates the regression model and annual MAE periods dynamically from pu
   const model = calculateCurrentRateModel(priceEnvelope.prices, rateEnvelope.rates, '9999-12-31');
 
   assert.ok(model);
+  assertCurrentRateModelNumbersAreRounded(model);
   assert.equal(model.trendDays <= 180, true);
   assert.equal(model.trendDays >= 175, true);
   assert.ok(model.trendObservations > 100);
@@ -508,6 +521,12 @@ test('calculates the regression model and annual MAE periods dynamically from pu
     assert.ok(annualWindows[index - 1].from > annualWindows[index].to);
   }
   assert.ok(model.errorWindows.every(({ maeAnnualRatePercent, observations }) => maeAnnualRatePercent > 0 && observations > 0));
+  assert.ok(model.errorWindows.every(({ maeAnnualRatePercent }) => maeAnnualRatePercent === Number(maeAnnualRatePercent.toFixed(8))));
+  assert.equal(model.modelErrorAnnualRatePercent, Number(model.modelErrorAnnualRatePercent.toFixed(8)));
+  assert.equal(model.referenceValidationMaeAnnualRatePercent, Number(model.referenceValidationMaeAnnualRatePercent.toFixed(8)));
+  assert.equal(model.csh2AnnualRatePercent, Number(model.csh2AnnualRatePercent.toFixed(8)));
+  assert.equal(model.csh2AnnualRateLowPercent, Number(model.csh2AnnualRateLowPercent.toFixed(8)));
+  assert.equal(model.csh2AnnualRateHighPercent, Number(model.csh2AnnualRateHighPercent.toFixed(8)));
   assert.ok(model.csh2AnnualRateLowPercent < model.csh2AnnualRatePercent);
   assert.ok(model.csh2AnnualRateHighPercent > model.csh2AnnualRatePercent);
   assert.equal(model.csh2AnnualRateLowPercent, model.csh2AnnualRatePercent - model.modelErrorAnnualRatePercent);

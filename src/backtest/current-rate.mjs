@@ -9,6 +9,20 @@ const minimumValidationObservations = 200;
 const maximumValidationMaePercent = 0.25;
 const maximumRecentMaePercent = 0.35;
 const maximumReferenceMaeRatio = 1.1;
+const rateDecimalPlaces = 8;
+
+function roundRate(value) {
+  return Number(value.toFixed(rateDecimalPlaces));
+}
+
+function roundModelNumbers(value) {
+  if (typeof value === 'number') return Number.isInteger(value) ? value : roundRate(value);
+  if (Array.isArray(value)) return value.map(roundModelNumbers);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, roundModelNumbers(item)]));
+  }
+  return value;
+}
 
 function dateYearsBefore(date, years) {
   const value = new Date(`${date}T00:00:00Z`);
@@ -131,7 +145,8 @@ function endpointExcessPercent(points, originIndex, lookbackDays) {
 
 function meanAbsoluteError(records, field = 'error') {
   if (!records.length) return undefined;
-  return records.reduce((sum, record) => sum + Math.abs(record[field]), 0) / records.length;
+  const mean = records.reduce((sum, record) => sum + Math.abs(record[field]), 0) / records.length;
+  return roundRate(mean);
 }
 
 function errorWindow(records, { fromExclusive, toInclusive, fullHistory = false } = {}) {
@@ -257,11 +272,11 @@ export function calculateCurrentRateModel(prices, rates, valuationDate, {
   );
   const currentOvernightAnnualFactor = overnightAccrualFactor(latestRate[1], 1) ** 365;
   const excessAnnualFactor = 1 + fitted.annualExcessPercent / 100;
-  const csh2AnnualRatePercent = (currentOvernightAnnualFactor * excessAnnualFactor - 1) * 100;
+  const csh2AnnualRatePercent = roundRate((currentOvernightAnnualFactor * excessAnnualFactor - 1) * 100);
   const modelErrorAnnualRatePercent = validationMaeAnnualRatePercent;
   const trendExamples = buildTrendExamples(points, fitted);
 
-  return {
+  return roundModelNumbers({
     valuationDate: latestPoint.date,
     trendStartDate: fitted.startDate,
     trendDays: fitted.calendarDays,
@@ -274,10 +289,10 @@ export function calculateCurrentRateModel(prices, rates, valuationDate, {
     csh2ExcessAnnualRatePercent: fitted.annualExcessPercent,
     csh2AnnualRatePercent,
     csh2AnnualRateLowPercent: Number.isFinite(modelErrorAnnualRatePercent)
-      ? csh2AnnualRatePercent - modelErrorAnnualRatePercent
+      ? roundRate(csh2AnnualRatePercent - modelErrorAnnualRatePercent)
       : csh2AnnualRatePercent,
     csh2AnnualRateHighPercent: Number.isFinite(modelErrorAnnualRatePercent)
-      ? csh2AnnualRatePercent + modelErrorAnnualRatePercent
+      ? roundRate(csh2AnnualRatePercent + modelErrorAnnualRatePercent)
       : csh2AnnualRatePercent,
     modelErrorAnnualRatePercent,
     errorEvaluationDays: evaluationDays,
@@ -287,7 +302,7 @@ export function calculateCurrentRateModel(prices, rates, valuationDate, {
     referenceValidationMaeAnnualRatePercent,
     recentMaeAnnualRatePercent: recentWindow?.maeAnnualRatePercent,
     errorWindows
-  };
+  });
 }
 
 /** Returns diagnostics suitable for failing a refresh before degraded market data is committed. */
