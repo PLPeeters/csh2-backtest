@@ -22,6 +22,12 @@ test('schedules CSH2 refreshes at midnight Brussels time every day', async () =>
   assert.match(packageJson.scripts['refresh-csh2'], /check-current-rate-model/);
 });
 
+test('can regenerate and validate the current-rate model without refreshing market data', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.match(packageJson.scripts['update-current-rate-model'], /scripts\/update-current-rate-model\.mjs/);
+  assert.match(packageJson.scripts['update-current-rate-model'], /check-current-rate-model/);
+});
+
 test('publishes changed refreshes through the reusable Pages workflow', async () => {
   const overnight = await workflow('refresh-overnight-rates.yml');
   const csh2 = await workflow('refresh-csh2.yml');

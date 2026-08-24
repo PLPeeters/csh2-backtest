@@ -50,6 +50,9 @@ You can refresh the source datasets separately with `npm run refresh-csh2` and
 `npm run refresh-overnight-rates`. Both commands regenerate and validate the shared
 current-rate model against the resulting pair of datasets.
 
+To regenerate the published model from the currently bundled datasets only (with no
+network requests), run `npm run update-current-rate-model`.
+
 ## Development
 
 - `npm test` runs the calculation and browser tests.
