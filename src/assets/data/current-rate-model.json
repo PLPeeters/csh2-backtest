@@ -3,7 +3,7 @@
   "valuationDate": "2026-08-24",
   "sourceData": {
     "prices": "26c10bb325c21b0b",
-    "rates": "963dfa6aa101d030"
+    "rates": "ce6a55de4a7350d6"
   },
   "configuration": {
     "lookbackDays": 180,
@@ -48,7 +48,7 @@
       }
     ],
     "trendExamplesOmitted": true,
-    "rateDate": "2026-08-21",
+    "rateDate": "2026-08-24",
     "overnightRatePercent": 2.189,
     "currentOvernightAnnualRatePercent": 2.24414575,
     "csh2ExcessAnnualRatePercent": 0.38554253,
