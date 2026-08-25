@@ -24,5 +24,6 @@ export {
   buildOvernightBenchmarkReturnSeries,
   buildTrailingAnnualizedCsh2ReturnSeries,
   buildTrailingAnnualizedOvernightBenchmarkReturnSeries,
+  estimateAnnualizedAfterTaxCsh2Rate,
   findObservedHoldingPeriods
 } from './backtest/return-series.mjs';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -898,6 +898,20 @@ test('builds a forward annualized CSH2 return at the start of the measured perio
   assert.equal(series.length, 1);
   assert.equal(series[0].date, '2025-01-01');
   assert.ok(series[0].value > 9 && series[0].value < 11);
+});
+
+test('estimates a one-year post-tax CSH2 rate with the annualized-return tax assumptions', () => {
+  const grossRate = 3;
+  const cgt = estimateAnnualizedAfterTaxCsh2Rate(grossRate, '2026-01-01');
+  const reynders = estimateAnnualizedAfterTaxCsh2Rate(grossRate, '2026-01-01', { applyReyndersTax: true });
+  const historical = buildForwardAnnualizedCsh2ReturnSeries({
+    '2026-01-01': 100,
+    '2027-01-01': 103
+  }, '2026-01-01', '2027-01-01', { afterTax: true });
+
+  assert.equal(cgt, historical[0].value);
+  assert.ok(reynders < cgt);
+  assert.equal(estimateAnnualizedAfterTaxCsh2Rate(-100, '2026-01-01'), undefined);
 });
 
 test('can show annualized CSH2 returns after transaction and gain taxes', () => {

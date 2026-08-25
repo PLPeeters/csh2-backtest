@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { buildCurrentRateEvolution, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from '../../backtest.mjs';
+  import { buildCurrentRateEvolution, estimateAnnualizedAfterTaxCsh2Rate, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches } from '../../backtest.mjs';
   import type { BacktestController } from '../state/backtest.svelte';
   import type { MinimumHoldingPeriodRange } from '../types';
   import { date, duration, percent } from '../services/formatters';
@@ -46,6 +46,18 @@
     return selected ? duration(valuationDate, selected.date) : 'More than 100 years';
   };
   let holdingPeriods = $derived(controller.benchmark?.holdingPeriods[controller.settings.applyReyndersTax ? 'reynders' : 'cgt']);
+  let estimatedAfterTaxRate = $derived(holdingPeriods
+    ? estimateAnnualizedAfterTaxCsh2Rate(holdingPeriods.csh2AnnualRatePercent, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+    : undefined);
+  let estimatedAfterTaxLowRate = $derived(holdingPeriods
+    ? estimateAnnualizedAfterTaxCsh2Rate(holdingPeriods.csh2AnnualRateLowPercent, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+    : undefined);
+  let estimatedAfterTaxHighRate = $derived(holdingPeriods
+    ? estimateAnnualizedAfterTaxCsh2Rate(holdingPeriods.csh2AnnualRateHighPercent, holdingPeriods.valuationDate, { applyReyndersTax: controller.settings.applyReyndersTax })
+    : undefined);
+  let estimatedAfterTaxError = $derived(estimatedAfterTaxLowRate !== undefined && estimatedAfterTaxHighRate !== undefined
+    ? Math.abs(estimatedAfterTaxHighRate - estimatedAfterTaxLowRate) / 2
+    : undefined);
   let accountRateIsEntered = $derived(controller.settings.bestSavingsBaseInterestRate !== '' || controller.settings.bestSavingsFidelityPremium !== '');
   let accountBaseRate = $derived(Number(controller.settings.bestSavingsBaseInterestRate || 0));
   let accountFidelityPremium = $derived(Number(controller.settings.bestSavingsFidelityPremium || 0));
@@ -94,13 +106,13 @@
 
 <section class="benchmark-section" aria-labelledby="holding-period-heading">
   <div class="section-title current-rate-heading">
-    <div><p class="eyebrow">Current-rate estimate</p><h2 id="holding-period-heading">Minimum holding periods</h2>{#if holdingPeriods}<p class="current-rate-summary" aria-label="Current rates used"><span>Current €STR <strong>{percent(holdingPeriods.overnightRatePercent)}%</strong></span><span class="estimated-rate">Estimated CSH2 <strong class="estimated-rate-value"><span class="estimated-rate-point">{percent(holdingPeriods.csh2AnnualRatePercent)}%</span>{#if holdingPeriods.modelErrorAnnualRatePercent !== undefined}<span class="estimated-rate-error">±{percent(holdingPeriods.modelErrorAnnualRatePercent)} pp</span>{/if}</strong><span class="methodology-trigger"><button type="button" class="methodology-info" aria-label="How estimated CSH2 is calculated" aria-haspopup="dialog" onclick={openMethodology}>i</button><span class="methodology-tooltip" role="tooltip">Click for methodology</span></span></span></p>{/if}</div>
+    <div><p class="eyebrow">Current-rate estimate</p><h2 id="holding-period-heading">Minimum holding periods</h2>{#if holdingPeriods}<p class="current-rate-summary" aria-label="Current rates used"><span>Current €STR <strong>{percent(holdingPeriods.overnightRatePercent)}%</strong></span><span class="estimated-rate">Estimated CSH2 <strong class="estimated-rate-value"><span class="estimated-rate-point">{percent(holdingPeriods.csh2AnnualRatePercent)}%</span>{#if holdingPeriods.modelErrorAnnualRatePercent !== undefined}<span class="estimated-rate-error">±{percent(holdingPeriods.modelErrorAnnualRatePercent)} pp</span>{/if}</strong><span class="methodology-trigger"><button type="button" class="methodology-info" aria-label="How estimated CSH2 is calculated" aria-haspopup="dialog" onclick={openMethodology}>i</button><span class="methodology-tooltip" role="tooltip">Click for methodology</span></span></span>{#if estimatedAfterTaxRate !== undefined}<span class="estimated-rate">Post-tax estimated CSH2 rate <strong class="estimated-rate-value"><span class="estimated-rate-point">{percent(estimatedAfterTaxRate)}%</span>{#if estimatedAfterTaxError !== undefined && estimatedAfterTaxError > 0}<span class="estimated-rate-error">±{percent(estimatedAfterTaxError)} pp</span>{/if}</strong></span>{/if}</p>{/if}</div>
     <div class="benchmark-account-rate"><p class="eyebrow">Best available savings account</p><div class="benchmark-account-rate-fields"><label class="account-interest-rate">Best available base annual rate (%)<input type="number" min="-99.99" step="0.01" placeholder="e.g. 0.50" value={controller.settings.bestSavingsBaseInterestRate} oninput={(event) => controller.updateSetting('bestSavingsBaseInterestRate', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('bestSavingsBaseInterestRate', event.currentTarget.value)} /></label><label class="account-interest-rate">Best available fidelity premium (%)<input type="number" min="0" step="0.01" placeholder="e.g. 1.50" value={controller.settings.bestSavingsFidelityPremium} oninput={(event) => controller.updateSetting('bestSavingsFidelityPremium', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('bestSavingsFidelityPremium', event.currentTarget.value)} /></label></div>
     </div>
   </div>
   {#if holdingPeriods}
     <div class="holding-period-summary"><HoldingPeriodChart milestones={holdingPeriodMilestones} maximumDays={currentRateEvolution?.maximumProjectionDays ?? projectionHorizonDays} /></div>
-    <p class="chart-explanation holding-period-explanation">At the {rateEstimateLabel} estimated CSH2 rate. Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.{#if accountRateIsEntered && accountRateIsValid}<span class="account-assumption">The best available account uses a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</p>
+    <p class="chart-explanation holding-period-explanation">At the {rateEstimateLabel} estimated CSH2 rate. The post-tax rate assumes a one-year buy-and-sell holding period and uses the same assumptions as the Backward annualized returns chart: buy and sell TOB plus {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}, but no fixed broker fees or annual CGT exemption. The holding-period estimate uses those same tax assumptions; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.{#if accountRateIsEntered && accountRateIsValid}<span class="account-assumption">The best available account uses a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</p>
   {:else if controller.benchmarkStatus.kind === 'success'}
     <p class="chart-explanation holding-period-explanation">Current-rate holding periods are unavailable because comparable recent CSH2 or overnight-rate data is missing.</p>
   {/if}

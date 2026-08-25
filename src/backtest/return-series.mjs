@@ -1,4 +1,4 @@
-import { CGT_EXEMPTION_START_YEAR, CGT_RATE, daysBetween, overnightAccrualFactor, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
+import { CGT_EXEMPTION_START_YEAR, CGT_RATE, dateAfter, daysBetween, overnightAccrualFactor, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 import { isUsableClose, priceValue } from './quotes.mjs';
 import { runBacktest } from './simulation.mjs';
 
@@ -89,6 +89,20 @@ function csh2AfterTaxRatio(prices, applyReyndersTax) {
       : saleYear >= CGT_EXEMPTION_START_YEAR ? taxableGain * CGT_RATE : 0;
     return gross - (gross * TOB_RATE) - gainTax;
   };
+}
+
+/**
+ * Converts a gross annual CSH2 estimate into the net annual return of a
+ * one-year buy-and-sell holding period. It deliberately uses the same
+ * transaction-tax and gain-tax treatment as the annualized return charts.
+ */
+export function estimateAnnualizedAfterTaxCsh2Rate(grossAnnualRatePercent, purchaseDate, { applyReyndersTax = false } = {}) {
+  if (!Number.isFinite(grossAnnualRatePercent) || grossAnnualRatePercent <= -100 || !/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return undefined;
+  const saleDate = dateAfter(purchaseDate, 365);
+  const purchase = { date: purchaseDate, value: 100 };
+  const sale = { date: saleDate, value: 100 * (1 + grossAnnualRatePercent / 100) };
+  const netFactor = csh2AfterTaxRatio({}, applyReyndersTax)(purchase, sale);
+  return (netFactor ** (365 / daysBetween(purchaseDate, saleDate)) - 1) * 100;
 }
 
 export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90, afterTax = false, applyReyndersTax = false } = {}) {

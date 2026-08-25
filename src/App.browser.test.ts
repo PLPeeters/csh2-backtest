@@ -55,6 +55,7 @@ describe('CSH2 application inputs', () => {
     const currentRates = page.getByLabelText('Current rates used');
     await expect.element(currentRates.getByText(/Current €STR/)).toBeVisible();
     await expect.element(currentRates.getByText(/Estimated CSH2 .*±.* pp/)).toBeVisible();
+    await expect.element(currentRates.getByText('Post-tax estimated CSH2 rate', { exact: false })).toBeVisible();
     await expect.element(currentRates.getByText(/Estimated CSH2 \(/)).toHaveLength(0);
     await expect.element(currentRates.getByText(/Base .* pp/)).toHaveLength(0);
     await page.getByRole('button', { name: 'How estimated CSH2 is calculated' }).click();
@@ -236,7 +237,7 @@ describe('CSH2 application inputs', () => {
     render(App);
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeDisabled();
     expect(localStorage.getItem('csh2-belgium-flows-v1')).toBeNull();
-    const holdingPeriodAssumption = page.getByText(/Investment-agnostic estimate/);
+    const holdingPeriodAssumption = page.getByText(/The post-tax rate assumes/);
     await expect.element(holdingPeriodAssumption).toHaveTextContent('10% CGT');
     const exemption = page.getByRole('checkbox', { name: 'Apply the annual capital-gains exemption' });
     const taxRegime = page.getByRole('group', { name: 'CSH2 gain tax regime' });
