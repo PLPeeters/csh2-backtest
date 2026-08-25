@@ -330,7 +330,7 @@ export function buildReturnProjection(flows, prices, rates, valuationDate, from,
  * Compares one ongoing fidelity premium with moving its principal to CSH2 now and after vesting.
  * This is a mechanical comparison, not a price forecast.
  */
-export function assessFidelityPremiumTiming(prices, valuationDate, options, premium, { csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent } = {}) {
+export function assessFidelityPremiumTiming(prices, valuationDate, options, premium, { csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, bestSavingsBaseAnnualRatePercent, bestSavingsFidelityPremiumPercent } = {}) {
   const { id, baseAmount, earnedDate, finalPayoutAmount } = premium;
   if (!Number.isFinite(baseAmount) || baseAmount <= 0) throw new Error('Every fidelity premium needs a positive base amount.');
   if (!Number.isFinite(finalPayoutAmount) || finalPayoutAmount <= 0) throw new Error('Every fidelity premium needs a positive final payout amount.');
@@ -346,11 +346,19 @@ export function assessFidelityPremiumTiming(prices, valuationDate, options, prem
   const baseGrowthFactor = (1 + baseAnnualRatePercent / 100) ** (days / 365);
   const waitingValue = euro(baseAmount * baseGrowthFactor + finalPayoutAmount);
   const currentPeriodDifference = euro(immediate.netLiquidationValue - waitingValue);
-  const currentPeriodPreferred = currentPeriodDifference > 0.005 ? 'move now' : currentPeriodDifference < -0.005 ? 'wait' : 'either';
-  let recommendation = currentPeriodPreferred === 'move now' ? 'move now' : currentPeriodPreferred === 'either' ? 'either' : 'wait, then reassess';
+  const bestSavingsRateIsValid = Number.isFinite(bestSavingsBaseAnnualRatePercent) && bestSavingsBaseAnnualRatePercent > -100 &&
+    Number.isFinite(bestSavingsFidelityPremiumPercent) && bestSavingsFidelityPremiumPercent >= 0 && bestSavingsBaseAnnualRatePercent + bestSavingsFidelityPremiumPercent > -100;
+  const bestAccountCurrentValue = bestSavingsRateIsValid
+    ? euro(baseAmount * (1 + bestSavingsBaseAnnualRatePercent / 100) ** (days / 365))
+    : undefined;
+  const currentPeriodPreferred = bestAccountCurrentValue !== undefined && bestAccountCurrentValue > immediate.netLiquidationValue + 0.005 && bestAccountCurrentValue > waitingValue + 0.005
+    ? 'move to best account'
+    : currentPeriodDifference > 0.005 ? 'move now' : currentPeriodDifference < -0.005 ? 'wait' : 'either';
+  let recommendation = currentPeriodPreferred === 'move now' ? 'move now' : currentPeriodPreferred === 'move to best account' ? 'move to best account' : currentPeriodPreferred === 'either' ? 'either' : 'wait, then reassess';
   let transferDate = currentPeriodPreferred === 'wait' ? dateAfter(earnedDate, 1) : undefined;
   let nextYearCsh2Value;
   let nextYearAccountValue;
+  let nextYearBestAccountValue;
   if (currentPeriodPreferred === 'wait' && Number.isFinite(baseAnnualRatePercent) && baseAnnualRatePercent > -100 &&
       Number.isFinite(fidelityPremiumPercent) && fidelityPremiumPercent >= 0 && baseAnnualRatePercent + fidelityPremiumPercent > -100) {
     const nextEarnedDate = dateAfterCalendarYears(transferDate, 1);
@@ -360,7 +368,12 @@ export function assessFidelityPremiumTiming(prices, valuationDate, options, prem
     projectedPrices[nextEarnedDate] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** nextDays };
     nextYearCsh2Value = runBacktest([{ date: transferDate, type: 'inflow', amount: baseAmount }], projectedPrices, nextEarnedDate, scenarioOptions).netLiquidationValue;
     nextYearAccountValue = euro(baseAmount * (1 + (baseAnnualRatePercent + fidelityPremiumPercent) / 100));
-    recommendation = nextYearCsh2Value > nextYearAccountValue + 0.005 ? 'move after payout' : 'keep in account';
+    nextYearBestAccountValue = bestSavingsRateIsValid ? euro(baseAmount * (1 + (bestSavingsBaseAnnualRatePercent + bestSavingsFidelityPremiumPercent) / 100)) : undefined;
+    recommendation = nextYearCsh2Value > nextYearAccountValue + 0.005 && (nextYearBestAccountValue === undefined || nextYearCsh2Value > nextYearBestAccountValue + 0.005)
+      ? 'move after payout'
+      : nextYearBestAccountValue !== undefined && nextYearBestAccountValue > nextYearAccountValue + 0.005
+        ? 'move to best account after payout'
+        : 'keep in account';
   }
   return {
     id,
@@ -370,12 +383,14 @@ export function assessFidelityPremiumTiming(prices, valuationDate, options, prem
     csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
     immediateValue: immediate.netLiquidationValue,
     waitingValue,
+    bestAccountCurrentValue,
     currentPeriodDifference,
     currentPeriodPreferred,
     recommendation,
     transferDate,
     nextYearCsh2Value,
-    nextYearAccountValue
+    nextYearAccountValue,
+    nextYearBestAccountValue
   };
 }
 
@@ -431,8 +446,8 @@ export function allocateFidelityWithdrawals(fidelityPremiums, withdrawals) {
 /** Orders finished recommendations by their next action date, with indefinite keep decisions last. */
 export function orderFidelityAssessmentsByRecommendation(assessments, valuationDate) {
   const actionDate = (assessment) => {
-    if (assessment.recommendation === 'move now' || assessment.recommendation === 'either') return valuationDate;
-    if (assessment.recommendation === 'move after payout') return assessment.transferDate;
+    if (assessment.recommendation === 'move now' || assessment.recommendation === 'move to best account' || assessment.recommendation === 'either') return valuationDate;
+    if (assessment.recommendation === 'move after payout' || assessment.recommendation === 'move to best account after payout') return assessment.transferDate;
     if (assessment.recommendation === 'wait, then reassess') return assessment.transferDate;
     return '9999-12-31';
   };
@@ -488,7 +503,15 @@ export function assessFidelityPremiumTimings(prices, valuationDate, options, fid
     const candidatePlanValue = runBacktest([...acceptedFlows, candidateFlow], projectedPrices, nextEarnedDate, scenarioOptions).netLiquidationValue;
     const marginalCsh2Value = euro(candidatePlanValue - priorPlanValue);
     const combinedAccountValue = group.reduce((sum, assessment) => sum + assessment.nextYearAccountValue, 0);
-    const recommendation = marginalCsh2Value > combinedAccountValue + 0.005 ? 'move after payout' : 'keep in account';
+    const combinedBestAccountValue = group.every((assessment) => assessment.nextYearBestAccountValue !== undefined)
+      ? group.reduce((sum, assessment) => sum + assessment.nextYearBestAccountValue, 0)
+      : undefined;
+    const recommendation = marginalCsh2Value > combinedAccountValue + 0.005 &&
+      (combinedBestAccountValue === undefined || marginalCsh2Value > combinedBestAccountValue + 0.005)
+      ? 'move after payout'
+      : combinedBestAccountValue !== undefined && combinedBestAccountValue > combinedAccountValue + 0.005
+        ? 'move to best account after payout'
+        : 'keep in account';
     for (const assessment of group) {
       assessment.nextYearCsh2Value = euro(marginalCsh2Value * assessment.baseAmount / combinedBaseAmount);
       assessment.recommendation = recommendation;

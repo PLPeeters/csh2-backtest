@@ -43,7 +43,7 @@
   }
 </script>
 
-<div class="section-title"><div><p class="eyebrow">Input</p><h2 id="flows-heading">Cash flows</h2></div><button class="quiet" type="button" onclick={() => controller.loadExample()}>Load example</button></div>
+<div class="section-title"><div><p class="eyebrow">Input</p><h3 id="flows-heading">Cash flows</h3></div><button class="quiet" type="button" onclick={() => controller.loadExample()}>Load example</button></div>
 <section class="input-section csv-import" aria-labelledby="csv-heading">
   <div><p class="eyebrow">Optional</p><h3 id="csv-heading">Import a CSV</h3></div>
   <div class:dragging class="file-dropzone" role="group" aria-label="CSV file drop zone" ondragover={(event) => { event.preventDefault(); dragging = true; }} ondragleave={() => dragging = false} ondrop={(event) => { event.preventDefault(); dragging = false; loadFile(event.dataTransfer?.files[0]); }}>
@@ -85,6 +85,8 @@
   </details>
   <div class="cash-flow-actions"><div class="interest-controls">
     <label class="accrued-interest">Accrued base interest (€)<input type="number" min="0" step="0.01" placeholder="0.00" value={controller.settings.accruedBaseInterest} onchange={(event) => controller.updateSetting('accruedBaseInterest', event.currentTarget.value)} /></label>
+    <label class="account-interest-rate">Your account base annual rate (%)<input type="number" min="-99.99" step="0.01" placeholder="e.g. 0.50" required={controller.settings.fidelityPremiums.length > 0} value={controller.settings.accountBaseInterestRate} oninput={(event) => controller.updateSetting('accountBaseInterestRate', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('accountBaseInterestRate', event.currentTarget.value)} /></label>
+    <label class="account-interest-rate">Your account fidelity premium (%)<input type="number" min="0" step="0.01" placeholder="e.g. 1.50" value={controller.settings.accountFidelityPremium} oninput={(event) => controller.updateSetting('accountFidelityPremium', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('accountFidelityPremium', event.currentTarget.value)} /></label>
     <p class="interest-help">Accrued base interest remains yours after a transfer and is included in today’s missed-earnings comparison.</p>
     <div class="fidelity-premium-editor">
       <div class="fidelity-premium-heading"><p class="eyebrow">Optional</p><h3>Ongoing fidelity premiums</h3><p>Add one row for every part of your balance currently earning its own fidelity premium.</p></div>
@@ -104,7 +106,7 @@
       <div class="controls premium-controls"><button class="quiet" type="button" onclick={() => controller.addFidelityPremium()}>Add fidelity premium</button></div>
       {#if controller.settings.fidelityPremiums.length}
         <p class="interest-help premium-help">
-          Enter the account's base annual rate to compare whether transferring now or waiting is better.<br>
+          Your account rates are used to compare whether transferring now or waiting is better.<br>
           <b>Base amount</b> is the balance earning the premium.<br>
           <b>Premium earned on</b> is the date the premium becomes yours.<br>
           <b>Final premium payout</b> is the premium attributable to that base amount once earned.</p>

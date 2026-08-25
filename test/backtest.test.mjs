@@ -144,6 +144,21 @@ test('includes base-rate accrual in the account value while waiting for a fideli
   assert.equal(assessment.waitingValue, Number(expectedWaitingValue.toFixed(2)));
 });
 
+test('can recommend the best available savings account instead of CSH2 during a fidelity period', () => {
+  const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, {
+    id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
+  }, {
+    csh2AnnualRatePercent: 0,
+    baseAnnualRatePercent: 0,
+    bestSavingsBaseAnnualRatePercent: 100,
+    bestSavingsFidelityPremiumPercent: 0
+  });
+  assert.equal(assessment.currentPeriodPreferred, 'move to best account');
+  assert.equal(assessment.recommendation, 'move to best account');
+  assert.ok(assessment.bestAccountCurrentValue > assessment.immediateValue);
+  assert.ok(assessment.bestAccountCurrentValue > assessment.waitingValue);
+});
+
 test('recommends moving after payout when waiting wins now but CSH2 wins the next full fidelity year', () => {
   const assessment = assessFidelityPremiumTiming(prices, '2026-03-02', {}, {
     id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
@@ -152,6 +167,21 @@ test('recommends moving after payout when waiting wins now but CSH2 wins the nex
   assert.equal(assessment.recommendation, 'move after payout');
   assert.equal(assessment.transferDate, '2026-04-03');
   assert.ok(assessment.nextYearCsh2Value > assessment.nextYearAccountValue);
+});
+
+test('keeps the best savings account recommendation when grouped fidelity timing is reassessed after payout', () => {
+  const [assessment] = assessFidelityPremiumTimings(prices, '2026-03-02', {}, [{
+    id: 'premium-1', baseAmount: 1000, earnedDate: '2026-04-02', finalPayoutAmount: 50
+  }], {
+    csh2AnnualRatePercent: 20,
+    baseAnnualRatePercent: 1,
+    fidelityPremiumPercent: 1,
+    bestSavingsBaseAnnualRatePercent: 0,
+    bestSavingsFidelityPremiumPercent: 100
+  });
+  assert.equal(assessment.currentPeriodPreferred, 'wait');
+  assert.equal(assessment.recommendation, 'move to best account after payout');
+  assert.ok(assessment.nextYearBestAccountValue > assessment.nextYearCsh2Value);
 });
 
 test('orders fidelity periods from least advanced to most advanced and resolves equal dates by implied premium rate', () => {

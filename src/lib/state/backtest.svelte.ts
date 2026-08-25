@@ -28,7 +28,9 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
     brokerTransactionFee: settings.brokerTransactionFee,
     ...(settings.fidelityPremiums.length ? {
       accountBaseInterestRate: settings.accountBaseInterestRate,
-      accountFidelityPremium: settings.accountFidelityPremium
+      accountFidelityPremium: settings.accountFidelityPremium,
+      bestSavingsBaseInterestRate: settings.bestSavingsBaseInterestRate,
+      bestSavingsFidelityPremium: settings.bestSavingsFidelityPremium
     } : {}),
     csh2RateScenario: settings.csh2RateScenario
   };
@@ -93,7 +95,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     removeFidelityPremium(id: string) { settings.fidelityPremiums = settings.fidelityPremiums.filter((premium) => premium.id !== id); persist(); },
     updateFidelityPremium(id: string, key: keyof Omit<FidelityPremiumDraft, 'id'>, value: string) { const premium = settings.fidelityPremiums.find((item) => item.id === id); if (premium) { premium[key] = value; persist(); } },
     updateSetting<K extends keyof CalculationSettings>(key: K, value: CalculationSettings[K]) { settings[key] = value; persist(); },
-    async setAccountRate(key: 'accountBaseInterestRate' | 'accountFidelityPremium', value: string) {
+    async setAccountRate(key: 'accountBaseInterestRate' | 'accountFidelityPremium' | 'bestSavingsBaseInterestRate' | 'bestSavingsFidelityPremium', value: string) {
       settings[key] = value;
       persist();
       if (!view || !submittedFlowsSnapshot) return;
@@ -130,7 +132,9 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         ...view.settings,
         applyReyndersTax,
         accountBaseInterestRate: settings.accountBaseInterestRate,
-        accountFidelityPremium: settings.accountFidelityPremium
+        accountFidelityPremium: settings.accountFidelityPremium,
+        bestSavingsBaseInterestRate: settings.bestSavingsBaseInterestRate,
+        bestSavingsFidelityPremium: settings.bestSavingsFidelityPremium
       };
       status = { kind: 'loading', message: 'Updating the backtest tax regime…' };
       try {

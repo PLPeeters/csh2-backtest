@@ -24,6 +24,8 @@ export const defaultSettings = (): CalculationSettings => ({
   brokerTransactionFee: '0',
   accountBaseInterestRate: '',
   accountFidelityPremium: '',
+  bestSavingsBaseInterestRate: '',
+  bestSavingsFidelityPremium: '',
   csh2RateScenario: 'base'
 });
 
@@ -84,6 +86,16 @@ export function loadStoredState(storage: Storage): StoredState {
       ? String(candidate.accountBaseInterestRate)
       : typeof candidate.accountInterestRate === 'string' || typeof candidate.accountInterestRate === 'number' ? String(candidate.accountInterestRate) : '',
     accountFidelityPremium: typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : '',
+    // Existing rate inputs described the comparison account. Keep them as the
+    // best available account when introducing the separate current-account rates.
+    bestSavingsBaseInterestRate: typeof candidate.bestSavingsBaseInterestRate === 'string' || typeof candidate.bestSavingsBaseInterestRate === 'number'
+      ? String(candidate.bestSavingsBaseInterestRate)
+      : typeof candidate.accountBaseInterestRate === 'string' || typeof candidate.accountBaseInterestRate === 'number'
+        ? String(candidate.accountBaseInterestRate)
+        : typeof candidate.accountInterestRate === 'string' || typeof candidate.accountInterestRate === 'number' ? String(candidate.accountInterestRate) : '',
+    bestSavingsFidelityPremium: typeof candidate.bestSavingsFidelityPremium === 'string' || typeof candidate.bestSavingsFidelityPremium === 'number'
+      ? String(candidate.bestSavingsFidelityPremium)
+      : typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : '',
     csh2RateScenario: candidate.csh2RateScenario === 'cautious' || candidate.csh2RateScenario === 'optimistic' || candidate.csh2RateScenario === 'base'
       ? candidate.csh2RateScenario
       : defaults.csh2RateScenario

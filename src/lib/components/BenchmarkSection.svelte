@@ -46,9 +46,9 @@
     return selected ? duration(valuationDate, selected.date) : 'More than 100 years';
   };
   let holdingPeriods = $derived(controller.benchmark?.holdingPeriods[controller.settings.applyReyndersTax ? 'reynders' : 'cgt']);
-  let accountRateIsEntered = $derived(controller.settings.accountBaseInterestRate !== '' || controller.settings.accountFidelityPremium !== '');
-  let accountBaseRate = $derived(Number(controller.settings.accountBaseInterestRate || 0));
-  let accountFidelityPremium = $derived(Number(controller.settings.accountFidelityPremium || 0));
+  let accountRateIsEntered = $derived(controller.settings.bestSavingsBaseInterestRate !== '' || controller.settings.bestSavingsFidelityPremium !== '');
+  let accountBaseRate = $derived(Number(controller.settings.bestSavingsBaseInterestRate || 0));
+  let accountFidelityPremium = $derived(Number(controller.settings.bestSavingsFidelityPremium || 0));
   let accountRateIsValid = $derived(Number.isFinite(accountBaseRate) && accountBaseRate > -100 && Number.isFinite(accountFidelityPremium) && accountFidelityPremium >= 0 && accountBaseRate + accountFidelityPremium > -100);
   let selectedCsh2Rate = $derived(holdingPeriods?.[controller.settings.csh2RateScenario === 'cautious' ? 'csh2AnnualRateLowPercent' : controller.settings.csh2RateScenario === 'optimistic' ? 'csh2AnnualRateHighPercent' : 'csh2AnnualRatePercent']);
   let accountMatches = $derived(holdingPeriods && accountRateIsValid && accountFidelityPremium > 0
@@ -62,7 +62,7 @@
   let breakEvenPeriod = $derived(selectedHoldingPeriod(holdingPeriods?.breakEvenRange));
   let overnightMatchPeriod = $derived(selectedHoldingPeriod(holdingPeriods?.matchOvernightRange));
   let breakEvenLabel = $derived(holdingPeriods ? holdingPeriodText(holdingPeriods.valuationDate, holdingPeriods.breakEvenRange) : 'Unavailable');
-  let accountMatchLabel = $derived(!accountRateIsEntered ? 'Enter your account rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount && holdingPeriods ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years');
+  let accountMatchLabel = $derived(!accountRateIsEntered ? 'Enter the best available rate' : !accountRateIsValid ? 'Enter valid rates' : matchAccount && holdingPeriods ? duration(holdingPeriods.valuationDate, matchAccount.date) : 'More than 100 years');
   let overnightMatchLabel = $derived(holdingPeriods ? holdingPeriodText(holdingPeriods.valuationDate, holdingPeriods.matchOvernightRange) : 'Unavailable');
   let projectionHorizonDays = $derived(roundedProjectionHorizon(Math.max(
     breakEvenPeriod?.days ?? 0,
@@ -83,7 +83,7 @@
   let overnightMatches = $derived(currentRateEvolution && holdingPeriods ? currentRateEvolution.matches.overnight.map((match: { date: string; day: number }) => ({ days: match.day, label: duration(holdingPeriods.valuationDate, match.date) })) : []);
   let holdingPeriodMilestones = $derived([
     { name: 'Break even', label: breakEvenLabel, matches: breakEvenMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.breakEven, kind: 'break-even' as const },
-    { name: 'Match your account', label: accountMatchLabel, matches: accountEvolutionMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.account, kind: 'account' as const },
+    { name: 'Match best savings account', label: accountMatchLabel, matches: accountEvolutionMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.account, kind: 'account' as const },
     { name: 'Match €STR', label: overnightMatchLabel, matches: overnightMatches, matchingIntervals: currentRateEvolution?.matchingIntervals.overnight, kind: 'overnight' as const }
   ]);
   let evolutionMarkers = $derived(currentRateEvolution ? [
@@ -95,12 +95,12 @@
 <section class="benchmark-section" aria-labelledby="holding-period-heading">
   <div class="section-title current-rate-heading">
     <div><p class="eyebrow">Current-rate estimate</p><h2 id="holding-period-heading">Minimum holding periods</h2>{#if holdingPeriods}<p class="current-rate-summary" aria-label="Current rates used"><span>Current €STR <strong>{percent(holdingPeriods.overnightRatePercent)}%</strong></span><span class="estimated-rate">Estimated CSH2 <strong class="estimated-rate-value"><span class="estimated-rate-point">{percent(holdingPeriods.csh2AnnualRatePercent)}%</span>{#if holdingPeriods.modelErrorAnnualRatePercent !== undefined}<span class="estimated-rate-error">±{percent(holdingPeriods.modelErrorAnnualRatePercent)} pp</span>{/if}</strong><span class="methodology-trigger"><button type="button" class="methodology-info" aria-label="How estimated CSH2 is calculated" aria-haspopup="dialog" onclick={openMethodology}>i</button><span class="methodology-tooltip" role="tooltip">Click for methodology</span></span></span></p>{/if}</div>
-    <div class="benchmark-account-rate"><div class="benchmark-account-rate-fields"><label class="account-interest-rate">Base annual rate (%)<input type="number" min="-99.99" step="0.01" placeholder="e.g. 0.50" required={controller.settings.fidelityPremiums.length > 0} value={controller.settings.accountBaseInterestRate} oninput={(event) => controller.updateSetting('accountBaseInterestRate', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('accountBaseInterestRate', event.currentTarget.value)} /></label><label class="account-interest-rate">Fidelity premium (%)<input type="number" min="0" step="0.01" placeholder="e.g. 1.50" value={controller.settings.accountFidelityPremium} oninput={(event) => controller.updateSetting('accountFidelityPremium', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('accountFidelityPremium', event.currentTarget.value)} /></label></div>
+    <div class="benchmark-account-rate"><p class="eyebrow">Best available savings account</p><div class="benchmark-account-rate-fields"><label class="account-interest-rate">Best available base annual rate (%)<input type="number" min="-99.99" step="0.01" placeholder="e.g. 0.50" value={controller.settings.bestSavingsBaseInterestRate} oninput={(event) => controller.updateSetting('bestSavingsBaseInterestRate', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('bestSavingsBaseInterestRate', event.currentTarget.value)} /></label><label class="account-interest-rate">Best available fidelity premium (%)<input type="number" min="0" step="0.01" placeholder="e.g. 1.50" value={controller.settings.bestSavingsFidelityPremium} oninput={(event) => controller.updateSetting('bestSavingsFidelityPremium', event.currentTarget.value)} onchange={(event) => controller.setAccountRate('bestSavingsFidelityPremium', event.currentTarget.value)} /></label></div>
     </div>
   </div>
   {#if holdingPeriods}
     <div class="holding-period-summary"><HoldingPeriodChart milestones={holdingPeriodMilestones} maximumDays={currentRateEvolution?.maximumProjectionDays ?? projectionHorizonDays} /></div>
-    <p class="chart-explanation holding-period-explanation">At the {rateEstimateLabel} estimated CSH2 rate. Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.{#if accountRateIsEntered && accountRateIsValid}<span class="account-assumption">Your account uses a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</p>
+    <p class="chart-explanation holding-period-explanation">At the {rateEstimateLabel} estimated CSH2 rate. Investment-agnostic estimate with fractional shares, buy and sell TOB, and {controller.settings.applyReyndersTax ? '30% Reynders Tax' : '10% CGT'}. It ignores fixed broker fees and the annual CGT exemption; the savings-account estimate assumes one untouched deposit and no separate account-tax adjustment.{#if accountRateIsEntered && accountRateIsValid}<span class="account-assumption">The best available account uses a {percent(accountBaseRate)}% base rate and {percent(accountFidelityPremium)}% fidelity premium after each uninterrupted year.</span>{/if}</p>
   {:else if controller.benchmarkStatus.kind === 'success'}
     <p class="chart-explanation holding-period-explanation">Current-rate holding periods are unavailable because comparable recent CSH2 or overnight-rate data is missing.</p>
   {/if}
@@ -138,13 +138,13 @@
 
   {#if holdingPeriods && currentRateEvolution}
   <section class="panel chart-panel holding-period-chart-panel" aria-labelledby="holding-period-chart-heading">
-    <div class="section-title"><div><p class="eyebrow">Account comparison</p><h3 id="holding-period-chart-heading">CSH2 versus your account</h3></div></div>
+    <div class="section-title"><div><p class="eyebrow">Account comparison</p><h3 id="holding-period-chart-heading">CSH2 versus best savings account</h3></div></div>
     {#if accountRateIsEntered && accountRateIsValid}
-      <p class="chart-key holding-evolution-key"><span class="chart-key-csh2">Net CSH2 advantage</span><span class="chart-key-account">Your account</span></p>
-      <p class="chart-explanation holding-evolution-explanation">Assuming today’s rates stay constant, the line shows how far net CSH2 is ahead of or behind your account after buy and sell TOB and the selected tax. Arrows mark break-even and Match €STR.</p>
+      <p class="chart-key holding-evolution-key"><span class="chart-key-csh2">Net CSH2 advantage</span><span class="chart-key-account">Best savings account</span></p>
+      <p class="chart-explanation holding-evolution-explanation">Assuming today’s rates stay constant, the line shows how far net CSH2 is ahead of or behind the best available savings account after buy and sell TOB and the selected tax. Arrows mark break-even and Match €STR.</p>
       <HoldingPeriodEvolutionChart points={currentRateEvolution.points} markers={evolutionMarkers} maximumDays={currentRateEvolution.maximumProjectionDays} valuationDate={holdingPeriods.valuationDate} />
     {:else}
-      <p class="chart-empty">Enter valid account rates to compare your account with the current CSH2 projection.</p>
+      <p class="chart-empty">Enter valid best-available savings rates to compare them with the current CSH2 projection.</p>
     {/if}
   </section>
   {/if}

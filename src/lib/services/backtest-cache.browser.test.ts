@@ -16,6 +16,8 @@ const settings: CalculationSettings = {
   brokerTransactionFee: '0',
   accountBaseInterestRate: '1.5',
   accountFidelityPremium: '0.5',
+  bestSavingsBaseInterestRate: '1.5',
+  bestSavingsFidelityPremium: '0.5',
   csh2RateScenario: 'base'
 };
 

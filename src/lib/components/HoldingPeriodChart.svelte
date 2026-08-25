@@ -19,12 +19,15 @@
   const labelElements = new SvelteMap<string, HTMLElement>();
   let layoutFrame: number | undefined;
 
-  const niceStep = (maximum: number) => {
-    const roughStep = maximum / 4;
-    const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-    const normalized = roughStep / magnitude;
-    const multiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-    return multiplier * magnitude;
+  const daysPerMonth = 365.2425 / 12;
+  const niceMonthStep = (maximumMonths: number) => {
+    const target = maximumMonths / 4;
+    const shortSteps = [3, 4, 6, 12];
+    if (target <= 12) return shortSteps.reduce((best, step) =>
+      Math.abs(step - target) < Math.abs(best - target) ? step : best
+    );
+    const years = Math.max(1, Math.round(target / 12));
+    return years * 12;
   };
 
   const milestoneMatches = (milestone: HoldingPeriodMilestone) => milestone.matches ?? (milestone.days === undefined ? [] : [{ label: milestone.label, days: milestone.days }]);
@@ -43,14 +46,15 @@
     ...milestoneMatches(milestone).map((match) => match.days),
     ...(milestone.matchingIntervals ?? []).map((interval) => interval.endDay)
   ])));
-  let tickStep = $derived(niceStep(displayedMaximumDays));
-  let scaleMaximum = $derived(Math.max(tickStep, Math.ceil(displayedMaximumDays / tickStep) * tickStep));
+  let displayedMaximumMonths = $derived(displayedMaximumDays / daysPerMonth);
+  let tickStep = $derived(niceMonthStep(displayedMaximumMonths));
+  let scaleMaximum = $derived(Math.max(tickStep, Math.ceil(displayedMaximumMonths / tickStep) * tickStep));
   let ticks = $derived(Array.from({ length: Math.round(scaleMaximum / tickStep) + 1 }, (_, index) => index * tickStep));
-  const positionForDays = (days: number) => `${(days / scaleMaximum) * 100}%`;
+  const positionForDays = (days: number) => `${((days / daysPerMonth) / scaleMaximum) * 100}%`;
   const markerPositionForDays = (days: number) => `calc(${positionForDays(days)} - 1.5px)`;
   const flagLeftForDays = (days: number) => `calc(${positionForDays(days)} - 1.5px)`;
-  const flagRightForDays = (days: number) => `calc(${100 - (days / scaleMaximum) * 100}% - 1.5px)`;
-  let ariaLabel = $derived(`Minimum holding periods in days. ${milestones.map((milestone) => `${milestone.name}: ${milestoneMatches(milestone).map((match) => match.label).join(', ') || milestone.label}`).join('. ')}.`);
+  const flagRightForDays = (days: number) => `calc(${100 - ((days / daysPerMonth) / scaleMaximum) * 100}% - 1.5px)`;
+  let ariaLabel = $derived(`Minimum holding periods in months. ${milestones.map((milestone) => `${milestone.name}: ${milestoneMatches(milestone).map((match) => match.label).join(', ') || milestone.label}`).join('. ')}.`);
 
   const layoutLabels = () => {
     layoutFrame = undefined;
@@ -173,11 +177,11 @@
       </div>
     {/each}
     <div class="holding-period-axis-row">
-      <span class="holding-period-axis-title">Days</span>
+      <span class="holding-period-axis-title">Months</span>
       <div class="holding-period-axis">
         {#each ticks as tick, index}
-          <span class="holding-period-tick" style:left={positionForDays(tick)}></span>
-          <span class:first={index === 0} class:last={index === ticks.length - 1} class="holding-period-axis-label" style:left={positionForDays(tick)}>{tick.toLocaleString('en-BE')}</span>
+          <span class="holding-period-tick" style:left={`${(tick / scaleMaximum) * 100}%`}></span>
+          <span class:first={index === 0} class:last={index === ticks.length - 1} class="holding-period-axis-label" style:left={`${(tick / scaleMaximum) * 100}%`}>{tick.toLocaleString('en-BE')}</span>
         {/each}
       </div>
     </div>

@@ -27,23 +27,23 @@ describe('CSH2 application inputs', () => {
     localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ accountInterestRate: '2.5' }));
     render(App);
 
-    await expect.element(page.getByLabelText('Base annual rate (%)')).toHaveValue(2.5);
-    await expect.element(page.getByLabelText('Fidelity premium (%)')).toHaveValue(null);
+    await expect.element(page.getByLabelText('Best available base annual rate (%)', { exact: true })).toHaveValue(2.5);
+    await expect.element(page.getByLabelText('Best available fidelity premium (%)', { exact: true })).toHaveValue(null);
   });
 
   it('loads defaults, adds flows, and restores the documented example', async () => {
     render(App);
     await expect.element(page.getByRole('heading', { name: 'CSH2 backtester' })).toBeVisible();
     await expect.element(page.getByRole('heading', { name: 'Backward annualized returns · 1Y' })).toBeVisible();
-    const holdingTimeline = page.getByRole('img', { name: /Minimum holding periods in days/ });
+    const holdingTimeline = page.getByRole('img', { name: /Minimum holding periods in months/ });
     await expect.element(holdingTimeline).toBeVisible();
     const timelineElement = holdingTimeline.element() as HTMLElement;
     const timelineTrack = timelineElement.querySelector<HTMLElement>('.holding-period-track-line')!;
     const breakEvenProgress = timelineElement.querySelector<HTMLElement>('.holding-period-progress.holding-period-break-even')!;
-    expect(Math.abs(breakEvenProgress.getBoundingClientRect().right - timelineTrack.getBoundingClientRect().right)).toBeLessThan(1);
+    expect(breakEvenProgress.getBoundingClientRect().right).toBeLessThanOrEqual(timelineTrack.getBoundingClientRect().right);
     expect(timelineElement.querySelectorAll('.holding-period-row')[1].querySelector('.holding-period-track-line')).toBeNull();
-    await expect.element(page.getByRole('heading', { name: 'CSH2 versus your account' })).toBeVisible();
-    await expect.element(page.getByText('Enter valid account rates to compare your account with the current CSH2 projection.')).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'CSH2 versus best savings account' })).toBeVisible();
+    await expect.element(page.getByText('Enter valid best-available savings rates to compare them with the current CSH2 projection.')).toBeVisible();
     await expect.element(holdingTimeline.getByText('Break even', { exact: true })).toBeVisible();
     await expect.element(holdingTimeline.getByText('Match €STR', { exact: true })).toBeVisible();
     const estimatePicker = page.getByRole('group', { name: 'CSH2 rate scenario' });
@@ -89,9 +89,9 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByRole('dialog', { name: 'How we estimate today’s CSH2 return' })).toHaveLength(0);
     expect(renderedStyles(renderedDocument.documentElement).overflow).not.toBe('hidden');
     expect(renderedStyles(renderedDocument.body).overflow).not.toBe('hidden');
-    await expect.element(page.getByText('Enter your account rate', { exact: true })).toBeVisible();
-    const baseRate = page.getByLabelText('Base annual rate (%)');
-    const fidelityPremium = page.getByLabelText('Fidelity premium (%)');
+    await expect.element(page.getByText('Enter the best available rate', { exact: true })).toBeVisible();
+    const baseRate = page.getByLabelText('Best available base annual rate (%)');
+    const fidelityPremium = page.getByLabelText('Best available fidelity premium (%)');
     await baseRate.fill('0');
     await fidelityPremium.fill('0.1');
     await expect.element(page.getByText('Before the first fidelity premium · Still ahead after it.')).toHaveLength(0);
@@ -100,7 +100,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText(/0,5% base rate and 0% fidelity premium/)).toBeVisible();
     await fidelityPremium.fill('2');
     await expect.element(page.getByText(/0,5% base rate and 2% fidelity premium/)).toBeVisible();
-    await expect.element(page.getByRole('img', { name: /Net CSH2 advantage compared with your account in percent/ })).toBeVisible();
+    await expect.element(page.getByRole('img', { name: /Net CSH2 advantage compared with the best available savings account in percent/ })).toBeVisible();
     await expect.element(page.getByRole('group', { name: 'Compare net CSH2 with' })).toHaveLength(0);
     await expect.element(page.getByText(/^CSH2 matches €STR after/)).toHaveLength(0);
     await expect.element(page.getByText(/Below 0%: CSH2 is behind your account/)).toHaveLength(0);
@@ -152,8 +152,8 @@ describe('CSH2 application inputs', () => {
       const orderedLabels = labels.toSorted((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left);
       orderedLabels.slice(1).forEach((label, index) => expect(label.getBoundingClientRect().left - orderedLabels[index].getBoundingClientRect().right).toBeGreaterThanOrEqual(11));
     }
-    expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"accountBaseInterestRate":"0.5"');
-    expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"accountFidelityPremium":"2"');
+    expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"bestSavingsBaseInterestRate":"0.5"');
+    expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"bestSavingsFidelityPremium":"2"');
     expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"csh2RateScenario":"cautious"');
     await expect.element(page.getByLabelText('Backward annualized CSH2 return compared with the Euro overnight benchmark over 1 year')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeDisabled();
@@ -203,7 +203,7 @@ describe('CSH2 application inputs', () => {
     await payoutAmount.fill('12.50');
     await earnedDate.click();
     await expect.element(calculate).toBeDisabled();
-    await page.getByLabelText('Base annual rate (%)').fill('0');
+    await page.getByLabelText('Your account base annual rate (%)').fill('0');
     await page.getByLabelText('Fidelity premium 1 base amount in euro').click();
     await expect.element(calculate).toBeEnabled();
     await page.getByRole('button', { name: 'Add fidelity premium' }).click();
@@ -287,7 +287,7 @@ describe('CSH2 application inputs', () => {
     const initialChart = await chart.screenshot({ base64: true, save: false });
     const exemption = page.getByRole('checkbox', { name: 'Apply the annual capital-gains exemption' });
 
-    await page.getByLabelText('Base annual rate (%)').fill('2.5');
+    await page.getByLabelText('Your account base annual rate (%)').fill('2.5');
     await page.getByRole('heading', { name: 'Calculation settings' }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
 

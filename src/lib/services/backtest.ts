@@ -99,8 +99,13 @@ export function createBacktestCalculator() {
     const accountBaseRateInput = settings.accountBaseInterestRate.trim();
     const accountBaseRate = accountBaseRateInput === '' ? undefined : Number(accountBaseRateInput);
     const accountBaseRateIsValid = Number.isFinite(accountBaseRate) && accountBaseRate! > -100;
-    const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number } = accountBaseRateIsValid ? { baseAnnualRatePercent: accountBaseRate } : {};
+    const bestSavingsBaseRateInput = settings.bestSavingsBaseInterestRate.trim();
+    const bestSavingsBaseRate = bestSavingsBaseRateInput === '' ? undefined : Number(bestSavingsBaseRateInput);
+    const bestSavingsBaseRateIsValid = Number.isFinite(bestSavingsBaseRate) && bestSavingsBaseRate! > -100;
+    const accountRates: { baseAnnualRatePercent?: number; fidelityPremiumPercent?: number; bestSavingsBaseAnnualRatePercent?: number; bestSavingsFidelityPremiumPercent?: number } = accountBaseRateIsValid ? { baseAnnualRatePercent: accountBaseRate } : {};
     if (accountBaseRateInput !== '' && settings.accountFidelityPremium !== '') accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
+    if (bestSavingsBaseRateIsValid) accountRates.bestSavingsBaseAnnualRatePercent = bestSavingsBaseRate;
+    if (bestSavingsBaseRateInput !== '' && settings.bestSavingsFidelityPremium !== '') accountRates.bestSavingsFidelityPremiumPercent = Number(settings.bestSavingsFidelityPremium);
     const projectedAccountKey = JSON.stringify([normalized, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
     projectedAccountStage = getStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length && accountBaseRateIsValid
       ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates)

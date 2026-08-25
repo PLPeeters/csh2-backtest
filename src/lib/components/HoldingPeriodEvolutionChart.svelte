@@ -75,7 +75,7 @@
     });
   }
 
-  let ariaLabel = $derived(`Net CSH2 advantage compared with your account in percent over ${maximumDays} days. ${markers.map((marker) => `${marker.label} after ${marker.day} days`).join('. ') || 'No markers within the projection'}.`);
+  let ariaLabel = $derived(`Net CSH2 advantage compared with the best available savings account in percent over ${maximumDays} days. ${markers.map((marker) => `${marker.label} after ${marker.day} days`).join('. ') || 'No markers within the projection'}.`);
 
   $effect(() => {
     const inputs = { points, valuationDate };
@@ -142,6 +142,6 @@
 </script>
 
 <div class="holding-advantage-chart">
-  <p class="holding-advantage-measure">Relative advantage versus your account (%)</p>
+  <p class="holding-advantage-measure">Relative advantage versus best savings account (%)</p>
   <div bind:this={host} class="holding-advantage-chart-host" role="img" aria-label={ariaLabel}></div>
 </div>

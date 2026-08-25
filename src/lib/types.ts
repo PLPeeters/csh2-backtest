@@ -16,6 +16,8 @@ export interface CalculationSettings {
   brokerTransactionFee: string;
   accountBaseInterestRate: string;
   accountFidelityPremium: string;
+  bestSavingsBaseInterestRate: string;
+  bestSavingsFidelityPremium: string;
   csh2RateScenario: Csh2RateScenario;
 }
 export interface PriceRecord { open?: number; close: number; isFallback?: boolean; fallbackSource?: string }
@@ -72,11 +74,11 @@ export interface LedgerEntry {
 export interface BreakEvenEstimate { date: string; days: number; csh2AnnualRatePercent: number }
 export interface FidelityPremiumAssessment {
   id: string; baseAmount: number; earnedDate: string; finalPayoutAmount: number;
-  currentPeriodPreferred: 'move now' | 'wait' | 'either'; currentPeriodDifference: number;
-  immediateValue: number; waitingValue: number; csh2AnnualRatePercent: number;
-  recommendation: 'move now' | 'move after payout' | 'keep in account' | 'wait, then reassess' | 'either'; transferDate?: string;
+  currentPeriodPreferred: 'move now' | 'move to best account' | 'wait' | 'either'; currentPeriodDifference: number;
+  immediateValue: number; waitingValue: number; bestAccountCurrentValue?: number; csh2AnnualRatePercent: number;
+  recommendation: 'move now' | 'move to best account' | 'move after payout' | 'move to best account after payout' | 'keep in account' | 'wait, then reassess' | 'either'; transferDate?: string;
   transferAllocations: { date: string; amount: number }[];
-  nextYearCsh2Value?: number; nextYearAccountValue?: number;
+  nextYearCsh2Value?: number; nextYearAccountValue?: number; nextYearBestAccountValue?: number;
   purchaseGroupSize?: number;
 }
 export interface BacktestResult {
