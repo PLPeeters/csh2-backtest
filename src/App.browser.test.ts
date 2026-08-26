@@ -232,19 +232,16 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText('24 days', { exact: true })).toBeVisible();
   });
 
-  it('recovers malformed storage and preserves the CGT preference while Reynders Tax is active', async () => {
+  it('recovers malformed storage and selects the exempt CGT regime by default', async () => {
     localStorage.setItem('csh2-belgium-flows-v1', '{broken');
     render(App);
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeDisabled();
     expect(localStorage.getItem('csh2-belgium-flows-v1')).toBeNull();
     const holdingPeriodAssumption = page.getByText(/The post-tax rate assumes/);
     await expect.element(holdingPeriodAssumption).toHaveTextContent('10% CGT');
-    const exemption = page.getByRole('checkbox', { name: 'Apply the annual capital-gains exemption' });
     const taxRegime = page.getByRole('group', { name: 'CSH2 gain tax regime' });
-    await expect.element(taxRegime.getByRole('button', { name: '10% CGT' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(taxRegime.getByRole('button', { name: '10% CGT', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await taxRegime.getByRole('button', { name: '30% Reynders Tax' }).click();
-    await expect.element(exemption).toBeDisabled();
-    await expect.element(exemption).toBeChecked();
     await expect.element(holdingPeriodAssumption).toHaveTextContent('30% Reynders Tax');
     await expect.element(taxRegime.getByRole('button', { name: '30% Reynders Tax' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -286,18 +283,17 @@ describe('CSH2 application inputs', () => {
     const staleMessage = page.getByText('Inputs have changed. The results below still reflect your last calculation. Calculate again to update them.');
     const chart = page.getByLabelText('Cumulative return of your account compared with CSH2 and a euro overnight benchmark portfolio using the same external cash flows');
     const initialChart = await chart.screenshot({ base64: true, save: false });
-    const exemption = page.getByRole('checkbox', { name: 'Apply the annual capital-gains exemption' });
 
     await page.getByLabelText('Your account base annual rate (%)').fill('2.5');
     await page.getByRole('heading', { name: 'Calculation settings' }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
 
-    await exemption.click();
-    await expect.element(staleMessage).toBeVisible();
-    await exemption.click();
+    await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '10% CGT (no exemption)' }).click();
+    await expect.element(staleMessage).not.toBeInTheDocument();
+    await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '10% CGT', exact: true }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
 
-    await exemption.click();
+    await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '10% CGT (no exemption)' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
     const exemptionChart = await chart.screenshot({ base64: true, save: false });
@@ -360,7 +356,7 @@ describe('CSH2 application inputs', () => {
     await controller.calculate();
     controller.updateFlow(flow.id, 'amount', '2000');
 
-    await controller.setTaxRegime(true);
+    await controller.setTaxRegime('reynders');
 
     await controller.setCsh2RateScenario('optimistic');
 

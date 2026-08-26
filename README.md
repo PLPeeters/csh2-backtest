@@ -10,7 +10,7 @@ The backtest includes:
 
 - purchases, withdrawals, and final liquidation using historical daily closes;
 - Belgian transaction tax (TOB), optional broker fees, and FIFO gains;
-- the 2026 capital-gains regime or, optionally, Reynders Tax;
+- the 2026 capital-gains regime with or without its annual exemption, or Reynders Tax;
 - fractional or whole-share trading, including residual cash;
 - current-rate scenarios, break-even estimates, and missed-earnings comparisons;
 - local CSV import for cash flows; and

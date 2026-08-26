@@ -134,27 +134,29 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         })();
       }, 250);
     },
-    async setCapitalGainsExemption(value: boolean) {
-      settings.applyCapitalGainsExemption = value;
-      persist();
-      try { await prepareBenchmark(await dependencies.loadMarketData()); }
-      catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
-    },
     loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
     clear() { if (savingsAmountRefreshTimeout) clearTimeout(savingsAmountRefreshTimeout); clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },
     setBenchmarkAfterTax(value: boolean) { benchmarkAfterTax = value; },
-    async setTaxRegime(applyReyndersTax: boolean) {
-      if (settings.applyReyndersTax === applyReyndersTax) return;
+    async setTaxRegime(regime: 'cgt-exempt' | 'cgt-no-exemption' | 'reynders') {
+      const applyReyndersTax = regime === 'reynders';
+      const applyCapitalGainsExemption = regime === 'cgt-exempt';
+      if (settings.applyReyndersTax === applyReyndersTax && settings.applyCapitalGainsExemption === applyCapitalGainsExemption) return;
       settings.applyReyndersTax = applyReyndersTax;
+      settings.applyCapitalGainsExemption = applyCapitalGainsExemption;
       persist();
+      void (async () => {
+        try { await prepareBenchmark(await dependencies.loadMarketData()); }
+        catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
+      })();
       if (!view || !submittedFlowsSnapshot) return;
       const generation = ++requestGeneration;
       const recalculatedFlows = cloneFlows(submittedFlowsSnapshot);
       const recalculatedSettings = {
         ...view.settings,
         applyReyndersTax,
+        applyCapitalGainsExemption,
         accountBaseInterestRate: settings.accountBaseInterestRate,
         accountFidelityPremium: settings.accountFidelityPremium,
         bestSavingsBaseInterestRate: settings.bestSavingsBaseInterestRate,

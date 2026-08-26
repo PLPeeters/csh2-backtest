@@ -308,6 +308,8 @@ th { color: #60756d; font-size: .68rem; letter-spacing: .08em; text-transform: u
   .tax-regime-bar { top: 8px; align-items: stretch; flex-direction: column; gap: 8px; }
   .global-assumption-pickers, .tax-regime-picker, .rate-estimate-picker { width: 100%; }
   .tax-regime-picker button, .rate-estimate-picker button { flex: 1; }
+  .tax-regime-picker { width: fit-content; }
+  .tax-regime-picker button { flex: 0 0 auto; padding: 0 10px; }
   .panel { padding: 20px; }
   .section-title, .result-heading { align-items: flex-start; flex-direction: column; }
   .section-title { gap: 12px; }
