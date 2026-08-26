@@ -828,6 +828,19 @@ test('builds a net-return snapshot for each available price date after investing
   assert.ok(series.at(-1).value > series[0].value);
 });
 
+test('starts the whole-share CSH2 return series at the first executed buy', () => {
+  const series = buildBacktestReturnSeries([
+    { date: '2026-01-02', type: 'inflow', amount: 50 },
+    { date: '2026-02-02', type: 'inflow', amount: 60 }
+  ], {
+    '2026-01-02': 100,
+    '2026-02-02': 100,
+    '2026-03-02': 100
+  }, { buyWholeSharesOnly: true });
+
+  assert.deepEqual(series.map((point) => point.date), ['2026-02-02', '2026-03-02']);
+});
+
 test('excludes paid interest from the CSH2 return-series capital base', () => {
   const withInterest = buildBacktestReturnSeries([
     { date: '2026-01-02', type: 'inflow', amount: 1000 },

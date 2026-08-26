@@ -12,6 +12,7 @@ export function buildBacktestReturnSeries(flows, prices, options) {
     if (!inflows) continue;
     const outflows = completedFlows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
     const result = runBacktest(completedFlows, prices, date, options);
+    if (!result.entries.some((entry) => entry.type === 'inflow' && entry.units > 0)) continue;
     snapshots.push({ date, value: ((result.netLiquidationValue + outflows - inflows) / inflows) * 100 });
   }
   return snapshots;
