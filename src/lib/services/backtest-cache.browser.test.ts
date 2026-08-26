@@ -18,6 +18,7 @@ const settings: CalculationSettings = {
   accountFidelityPremium: '0.5',
   bestSavingsBaseInterestRate: '1.5',
   bestSavingsFidelityPremium: '0.5',
+  totalSavingsAmount: '',
   csh2RateScenario: 'base'
 };
 

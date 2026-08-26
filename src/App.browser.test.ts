@@ -269,7 +269,7 @@ describe('CSH2 application inputs', () => {
     const taxTreatment = page.getByRole('group', { name: 'Tax treatment' });
     await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'true');
     await taxTreatment.getByRole('button', { name: 'After tax' }).click();
-    await expect.element(page.getByText(/ignoring the annual CGT exemption/)).toBeVisible();
+    await expect.element(page.getByText(/applying the annual CGT exemption/)).toBeVisible();
     await expect.element(page.getByText(/The euro overnight benchmark is unchanged/)).toBeVisible();
     await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '30% Reynders Tax' }).click();
     await expect.element(page.getByText(/plus 30% Reynders Tax/)).toBeVisible();

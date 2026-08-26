@@ -1,6 +1,7 @@
 import { closingQuoteOnOrBefore } from './quotes.mjs';
 import { CGT_RATE, dateAfter, daysBetween, euro, overnightAccrualFactor, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 import { runBacktest } from './simulation.mjs';
+import { estimateSingleInvestmentLiquidationValue } from './taxation.mjs';
 import { calculateOvernightBenchmarkPortfolio } from './return-series.mjs';
 import { calculateCurrentRateModel, CURRENT_RATE_LOOKBACK_DAYS } from './current-rate.mjs';
 
@@ -13,16 +14,16 @@ function projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent) {
 }
 
 /** Finds when net CSH2 value catches a constant annual target rate after transaction and gain taxes. */
-export function estimateConstantRateMatch(csh2AnnualRatePercent, targetAnnualRatePercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+export function estimateConstantRateMatch(csh2AnnualRatePercent, targetAnnualRatePercent, valuationDate, { maximumProjectionDays = 36525, ...taxOptions } = {}) {
   if (![csh2AnnualRatePercent, targetAnnualRatePercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || targetAnnualRatePercent <= -100) return undefined;
-  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax,
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, taxOptions,
     (day) => (1 + targetAnnualRatePercent / 100) ** (day / 365));
 }
 
 /** Finds when net CSH2 catches a constant overnight benchmark quoted on an Actual/360 basis. */
-export function estimateOvernightRateMatch(csh2AnnualRatePercent, overnightRatePercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+export function estimateOvernightRateMatch(csh2AnnualRatePercent, overnightRatePercent, valuationDate, { maximumProjectionDays = 36525, ...taxOptions } = {}) {
   if (![csh2AnnualRatePercent, overnightRatePercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || overnightAccrualFactor(overnightRatePercent, 1) <= 0) return undefined;
-  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax,
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, taxOptions,
     (day) => overnightAccrualFactor(overnightRatePercent, 1) ** day);
 }
 
@@ -33,14 +34,21 @@ function dateAfterCalendarYears(date, years) {
   return new Date(Date.UTC(targetYear, month - 1, Math.min(day, lastDayOfMonth))).toISOString().slice(0, 10);
 }
 
-/** Finds when net CSH2 catches a savings account whose fidelity premium vests after each uninterrupted year. */
-export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { minimumProjectionDays = 0, maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+/**
+ * Finds when net CSH2 catches a savings account whose fidelity premium vests after each uninterrupted year.
+ * @param {number} csh2AnnualRatePercent
+ * @param {number} baseAnnualRatePercent
+ * @param {number} fidelityPremiumPercent
+ * @param {string} valuationDate
+ * @param {{ minimumProjectionDays?: number, maximumProjectionDays?: number, applyReyndersTax?: boolean, applyCapitalGainsExemption?: boolean, investmentAmount?: number }} [options]
+ */
+export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { minimumProjectionDays = 0, maximumProjectionDays = 36525, ...taxOptions } = {}) {
   const totalAnnualRatePercent = baseAnnualRatePercent + fidelityPremiumPercent;
   if (![csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, minimumProjectionDays, maximumProjectionDays].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || baseAnnualRatePercent <= -100 || fidelityPremiumPercent < 0 || totalAnnualRatePercent <= -100 || minimumProjectionDays < 0 || maximumProjectionDays < minimumProjectionDays) return undefined;
   let completedYears = 0;
   let periodStartDay = 0;
   let periodEndDay = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, 1));
-  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, (day) => {
+  return estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, taxOptions, (day) => {
     while (day >= periodEndDay) {
       completedYears += 1;
       periodStartDay = periodEndDay;
@@ -52,10 +60,17 @@ export function estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnua
   }, minimumProjectionDays);
 }
 
-/** Separates a possible base-rate match before the first fidelity award from the first match afterward. */
-export function estimateSavingsAccountRateMatches(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { maximumProjectionDays = 36525, applyReyndersTax = false } = {}) {
+/**
+ * Separates a possible base-rate match before the first fidelity award from the first match afterward.
+ * @param {number} csh2AnnualRatePercent
+ * @param {number} baseAnnualRatePercent
+ * @param {number} fidelityPremiumPercent
+ * @param {string} valuationDate
+ * @param {{ maximumProjectionDays?: number, applyReyndersTax?: boolean, applyCapitalGainsExemption?: boolean, investmentAmount?: number }} [options]
+ */
+export function estimateSavingsAccountRateMatches(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, { maximumProjectionDays = 36525, ...taxOptions } = {}) {
   const firstFidelityDays = daysBetween(valuationDate, dateAfterCalendarYears(valuationDate, 1));
-  const sharedOptions = { applyReyndersTax };
+  const sharedOptions = taxOptions;
   const afterFidelity = maximumProjectionDays >= firstFidelityDays
     ? estimateSavingsAccountRateMatch(csh2AnnualRatePercent, baseAnnualRatePercent, fidelityPremiumPercent, valuationDate, {
       ...sharedOptions,
@@ -93,14 +108,15 @@ export function estimateSavingsAccountRateMatches(csh2AnnualRatePercent, baseAnn
   };
 }
 
-function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, applyReyndersTax, targetValue, minimumProjectionDays = 0) {
+function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjectionDays, { applyReyndersTax = false, applyCapitalGainsExemption = false, investmentAmount } = {}, targetValue, minimumProjectionDays = 0) {
   const dailyGrowthFactor = (1 + csh2AnnualRatePercent / 100) ** (1 / 365);
-  const gainTaxRate = applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE;
   for (let day = minimumProjectionDays; day <= maximumProjectionDays; day += 1) {
     const priceFactor = dailyGrowthFactor ** day;
     const gross = (1 - TOB_RATE) * priceFactor;
     const gain = Math.max(0, (1 - TOB_RATE) * (priceFactor - 1));
-    const net = gross * (1 - TOB_RATE) - gain * gainTaxRate;
+    const net = applyCapitalGainsExemption && !applyReyndersTax && Number.isFinite(investmentAmount) && investmentAmount > 0
+      ? estimateSingleInvestmentLiquidationValue(investmentAmount, 100, 100 * priceFactor, valuationDate, dateAfter(valuationDate, day), { applyCapitalGainsExemption }) / investmentAmount
+      : gross * (1 - TOB_RATE) - gain * (applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE);
     const target = targetValue(day);
     if (net >= target) return { date: dateAfter(valuationDate, day), days: day };
   }
@@ -112,13 +128,15 @@ function estimateRateMatch(csh2AnnualRatePercent, valuationDate, maximumProjecti
  * @param {number} csh2AnnualRatePercent
  * @param {number} overnightRatePercent
  * @param {string} valuationDate
- * @param {{ baseAnnualRatePercent?: number, fidelityPremiumPercent?: number, maximumProjectionDays?: number, applyReyndersTax?: boolean }} [options]
+ * @param {{ baseAnnualRatePercent?: number, fidelityPremiumPercent?: number, maximumProjectionDays?: number, applyReyndersTax?: boolean, applyCapitalGainsExemption?: boolean, investmentAmount?: number }} [options]
  */
 export function buildCurrentRateEvolution(csh2AnnualRatePercent, overnightRatePercent, valuationDate, {
   baseAnnualRatePercent,
   fidelityPremiumPercent = 0,
   maximumProjectionDays = 365,
-  applyReyndersTax = false
+  applyReyndersTax = false,
+  applyCapitalGainsExemption = false,
+  investmentAmount
 } = {}) {
   const accountIsIncluded = Number.isFinite(baseAnnualRatePercent) && Number.isFinite(fidelityPremiumPercent);
   const totalAnnualRatePercent = accountIsIncluded ? baseAnnualRatePercent + fidelityPremiumPercent : undefined;
@@ -131,7 +149,6 @@ export function buildCurrentRateEvolution(csh2AnnualRatePercent, overnightRatePe
   const sampleInterval = Math.max(1, Math.ceil(lastDay / 900));
   const dailyGrowthFactor = (1 + csh2AnnualRatePercent / 100) ** (1 / 365);
   const overnightDailyFactor = overnightAccrualFactor(overnightRatePercent, 1);
-  const gainTaxRate = applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE;
   const points = [];
   const matches = { breakEven: [], account: [], overnight: [] };
   const matchingIntervals = { breakEven: [], account: [], overnight: [] };
@@ -149,7 +166,9 @@ export function buildCurrentRateEvolution(csh2AnnualRatePercent, overnightRatePe
     const priceFactor = dailyGrowthFactor ** day;
     const gross = (1 - TOB_RATE) * priceFactor;
     const gain = Math.max(0, (1 - TOB_RATE) * (priceFactor - 1));
-    const csh2 = 100 * (gross * (1 - TOB_RATE) - gain * gainTaxRate);
+    const csh2 = applyCapitalGainsExemption && !applyReyndersTax && Number.isFinite(investmentAmount) && investmentAmount > 0
+      ? estimateSingleInvestmentLiquidationValue(investmentAmount, 100, 100 * priceFactor, valuationDate, dateAfter(valuationDate, day), { applyCapitalGainsExemption }) / investmentAmount * 100
+      : 100 * (gross * (1 - TOB_RATE) - gain * (applyReyndersTax ? REYNDERS_TAX_RATE : CGT_RATE));
     const account = accountIsIncluded
       ? 100 * (1 + totalAnnualRatePercent / 100) ** completedYears *
         (1 + baseAnnualRatePercent / 100) ** ((day - periodStartDay) / (periodEndDay - periodStartDay))
@@ -234,12 +253,12 @@ function projectAccountReturnSeries(futurePremiums, valuationDate, throughDate, 
  * @param {Record<string, unknown>} prices
  * @param {Record<string, number>} rates
  * @param {string} valuationDate
- * @param {{ lookbackDays?: number, maximumProjectionDays?: number, applyReyndersTax?: boolean, currentRateModel?: ReturnType<typeof calculateCurrentRateModel> }} [options]
+ * @param {{ lookbackDays?: number, maximumProjectionDays?: number, applyReyndersTax?: boolean, applyCapitalGainsExemption?: boolean, investmentAmount?: number, currentRateModel?: ReturnType<typeof calculateCurrentRateModel> }} [options]
  */
-export function estimateConstantRateHoldingPeriods(prices, rates, valuationDate, { lookbackDays = CURRENT_RATE_LOOKBACK_DAYS, maximumProjectionDays = 36525, applyReyndersTax = false, currentRateModel } = {}) {
+export function estimateConstantRateHoldingPeriods(prices, rates, valuationDate, { lookbackDays = CURRENT_RATE_LOOKBACK_DAYS, maximumProjectionDays = 36525, applyReyndersTax = false, applyCapitalGainsExemption = false, investmentAmount, currentRateModel } = {}) {
   const model = currentRateModel ?? calculateCurrentRateModel(prices, rates, valuationDate, { lookbackDays });
   if (!model) return undefined;
-  const matchOptions = { maximumProjectionDays, applyReyndersTax };
+  const matchOptions = { maximumProjectionDays, applyReyndersTax, applyCapitalGainsExemption, investmentAmount };
   const breakEvenRange = holdingPeriodRange(model, (rate) => estimateConstantRateMatch(rate, 0, model.valuationDate, matchOptions));
   const matchOvernightRange = holdingPeriodRange(model, (rate) => estimateOvernightRateMatch(rate, model.overnightRatePercent, model.valuationDate, matchOptions));
   return {

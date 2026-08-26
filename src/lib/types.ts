@@ -18,6 +18,7 @@ export interface CalculationSettings {
   accountFidelityPremium: string;
   bestSavingsBaseInterestRate: string;
   bestSavingsFidelityPremium: string;
+  totalSavingsAmount: string;
   csh2RateScenario: Csh2RateScenario;
 }
 export interface PriceRecord { open?: number; close: number; isFallback?: boolean; fallbackSource?: string }
@@ -66,7 +67,10 @@ export interface BenchmarkHistory {
   gross: BenchmarkHistorySeries; cgt: BenchmarkHistorySeries; reynders: BenchmarkHistorySeries;
   holdingPeriods: { cgt?: ConstantRateHoldingPeriods; reynders?: ConstantRateHoldingPeriods };
 }
-export interface BenchmarkHistoryRequest { prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string; currentRateModel?: CurrentRateModelPublication }
+export interface BenchmarkHistoryRequest {
+  prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string; currentRateModel?: CurrentRateModelPublication;
+  applyCapitalGainsExemption?: boolean; totalSavingsAmount?: number;
+}
 export interface LedgerEntry {
   date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;
   remainingCash: number; brokerFee: number; tob: number; cgt: number; reyndersTax: number; exoneratedCgt: number;

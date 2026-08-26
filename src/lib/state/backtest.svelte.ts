@@ -63,6 +63,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   let submittedFlowsSnapshot: CashFlowDraft[] | undefined;
   let requestGeneration = 0;
   let benchmarkRequestGeneration = 0;
+  let savingsAmountRefreshTimeout: ReturnType<typeof setTimeout> | undefined;
 
   const persist = () => { saveFlows(dependencies.storage, flows); saveSettings(dependencies.storage, settings); };
   const prepareBenchmark = async (market: MarketDataBundle, requestedTo?: string) => {
@@ -71,7 +72,12 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     try {
       const to = requestedTo ?? latestAvailablePriceDate(market.data.prices, dependencies.today());
       if (!to) throw new Error('The published CSH2 price data contains no closing prices.');
-      const history = await dependencies.prepareBenchmark({ prices: market.data.prices, rates: market.rateData.rates, to, currentRateModel: market.currentRateModel });
+      const totalSavingsAmount = Number(settings.totalSavingsAmount || '10000');
+      const history = await dependencies.prepareBenchmark({
+        prices: market.data.prices, rates: market.rateData.rates, to, currentRateModel: market.currentRateModel,
+        applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
+        ...(Number.isFinite(totalSavingsAmount) && totalSavingsAmount > 0 ? { totalSavingsAmount } : {})
+      });
       if (generation !== benchmarkRequestGeneration) return;
       benchmark = history;
       benchmarkStatus = { kind: 'success', message: '' };
@@ -116,8 +122,26 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
       }
     },
+    setTotalSavingsAmount(value: string) {
+      settings.totalSavingsAmount = value;
+      persist();
+      benchmarkStatus = { kind: 'loading', message: 'Updating benchmark history…' };
+      if (savingsAmountRefreshTimeout) clearTimeout(savingsAmountRefreshTimeout);
+      savingsAmountRefreshTimeout = setTimeout(() => {
+        void (async () => {
+          try { await prepareBenchmark(await dependencies.loadMarketData()); }
+          catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
+        })();
+      }, 250);
+    },
+    async setCapitalGainsExemption(value: boolean) {
+      settings.applyCapitalGainsExemption = value;
+      persist();
+      try { await prepareBenchmark(await dependencies.loadMarketData()); }
+      catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
+    },
     loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
-    clear() { clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
+    clear() { if (savingsAmountRefreshTimeout) clearTimeout(savingsAmountRefreshTimeout); clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },
     setBenchmarkAfterTax(value: boolean) { benchmarkAfterTax = value; },

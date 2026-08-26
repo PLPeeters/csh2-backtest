@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -925,6 +925,48 @@ test('estimates a one-year post-tax CSH2 rate with the annualized-return tax ass
   assert.equal(cgt, historical[0].value);
   assert.ok(reynders < cgt);
   assert.equal(estimateAnnualizedAfterTaxCsh2Rate(-100, '2026-01-01'), undefined);
+});
+
+test('uses the entered savings amount to apply the CGT exemption in projected tax estimates', () => {
+  const withoutExemption = estimateAnnualizedAfterTaxCsh2Rate(20, '2026-01-01');
+  const withExemption = estimateAnnualizedAfterTaxCsh2Rate(20, '2026-01-01', {
+    applyCapitalGainsExemption: true,
+    investmentAmount: 10000
+  });
+  const taxableLargeBalance = estimateAnnualizedAfterTaxCsh2Rate(20, '2026-01-01', {
+    applyCapitalGainsExemption: true,
+    investmentAmount: 100000
+  });
+
+  assert.ok(withExemption > withoutExemption);
+  assert.ok(taxableLargeBalance < withExemption);
+  const exactBacktest = runBacktest([{ date: '2026-01-01', type: 'inflow', amount: 10000 }], {
+    '2026-01-01': 100,
+    '2027-01-01': 120
+  }, '2027-01-01', { applyCapitalGainsExemption: true });
+  assert.equal(withExemption, (exactBacktest.netLiquidationValue / 10000 - 1) * 100);
+});
+
+test('uses the entered savings amount to apply the CGT exemption in annualized return series', () => {
+  const prices = { '2026-01-01': 100, '2027-01-01': 120 };
+  const withoutExemption = buildForwardAnnualizedCsh2ReturnSeries(prices, '2026-01-01', '2027-01-01', { afterTax: true });
+  const withExemption = buildForwardAnnualizedCsh2ReturnSeries(prices, '2026-01-01', '2027-01-01', {
+    afterTax: true,
+    applyCapitalGainsExemption: true,
+    investmentAmount: 10000
+  });
+
+  assert.ok(withExemption[0].value > withoutExemption[0].value);
+});
+
+test('uses the entered savings amount to apply the CGT exemption to holding-period estimates', () => {
+  const withoutExemption = estimateConstantRateMatch(20, 19, '2026-01-01');
+  const withExemption = estimateConstantRateMatch(20, 19, '2026-01-01', {
+    applyCapitalGainsExemption: true,
+    investmentAmount: 10000
+  });
+
+  assert.ok(withExemption.days < withoutExemption.days);
 });
 
 test('can show annualized CSH2 returns after transaction and gain taxes', () => {

@@ -6,11 +6,12 @@ import { compatiblePublishedCurrentRateModel } from '../services/current-rate-mo
 const lookbackPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825 } as const;
 const forwardPeriods = { '1m': 30, '3m': 90, '6m': 183, '1y': 365 } as const;
 
-type SeriesBuilder = (data: Record<string, unknown>, from: string, to: string, options: { lookbackDays: number; afterTax: boolean; applyReyndersTax?: boolean }) => BenchmarkSeries['csh2'];
+type SeriesBuilder = (data: Record<string, unknown>, from: string, to: string, options: { lookbackDays: number; afterTax: boolean; applyReyndersTax?: boolean; applyCapitalGainsExemption?: boolean; investmentAmount?: number }) => BenchmarkSeries['csh2'];
 
 function buildSeries(periods: Record<string, number>, buildCsh2: SeriesBuilder, buildOvernight: SeriesBuilder, request: BenchmarkHistoryRequest, afterTax: boolean, applyReyndersTax = false) {
+  const applyCapitalGainsExemption = afterTax && !applyReyndersTax && request.applyCapitalGainsExemption === true && Number.isFinite(request.totalSavingsAmount) && request.totalSavingsAmount! > 0;
   return Object.fromEntries(Object.entries(periods).map(([period, lookbackDays]) => [period, {
-    csh2: buildCsh2(request.prices, '', request.to, { lookbackDays, afterTax, applyReyndersTax }),
+    csh2: buildCsh2(request.prices, '', request.to, { lookbackDays, afterTax, applyReyndersTax, applyCapitalGainsExemption, investmentAmount: request.totalSavingsAmount }),
     overnight: buildOvernight(request.rates, '', request.to, { lookbackDays, afterTax })
   }])) as Record<BenchmarkPeriod, BenchmarkSeries>;
 }
@@ -31,7 +32,7 @@ self.onmessage = ({ data }: MessageEvent<BenchmarkHistoryRequest>) => {
       cgt: buildHistory(data, true),
       reynders: buildHistory(data, true, true),
       holdingPeriods: {
-        cgt: estimateConstantRateHoldingPeriods(data.prices, data.rates, data.to, { currentRateModel }),
+        cgt: estimateConstantRateHoldingPeriods(data.prices, data.rates, data.to, { currentRateModel, applyCapitalGainsExemption: data.applyCapitalGainsExemption, investmentAmount: data.totalSavingsAmount }),
         reynders: estimateConstantRateHoldingPeriods(data.prices, data.rates, data.to, { applyReyndersTax: true, currentRateModel })
       }
     } });

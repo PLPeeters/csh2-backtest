@@ -91,6 +91,9 @@ h3 { margin-bottom: 0; font-size: 1rem; letter-spacing: -.01em; }
 .methodology-caveat { margin: 14px 0 0; color: #687970; font-size: .76rem; line-height: 1.45; }
 .benchmark-account-rate { width: min(100%, 440px); }
 .benchmark-account-rate-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.benchmark-savings-control { margin-bottom: 16px; }
+.benchmark-savings-input { width: min(100%, 220px); }
+.benchmark-savings-help { margin: 6px 0 0; color: #617169; font-size: .78rem; line-height: 1.4; }
 .benchmark-chart-panel { margin-bottom: 0; }
 .holding-period-chart-panel { margin-bottom: 0; }
 .section-title, .result-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -214,6 +217,8 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .benchmark-title { min-width: 0; }
 .benchmark-title .chart-explanation { max-width: 620px; }
 .chart-loading { display: grid; min-height: 290px; margin: 0; place-items: center; color: #5b7066; font-size: .9rem; }
+.chart-update-container { position: relative; }
+.chart-update-overlay { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; border-radius: 8px; background: color-mix(in srgb, #fff 78%, transparent); color: #39574b; font-size: .9rem; font-weight: 700; backdrop-filter: blur(1px); }
 .chart-empty { display: grid; min-height: 290px; margin: 0; place-items: center; color: #5b7066; font-size: .9rem; text-align: center; }
 .chart-key { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 4px; color: #5b7066; font-size: .8rem; }
 .chart-key span { display: inline-flex; align-items: center; gap: 6px; }
@@ -233,7 +238,6 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .benchmark-holding-periods { margin: 0 0 10px; }
 .holding-period-summary { margin-top: 18px; border: 1px solid #d8e1db; border-radius: 8px; padding: 18px; background: #fff; }
 .holding-period-explanation { margin: 0 0 18px; }
-.account-assumption { margin-left: .25em; }
 .holding-period-chart { width: 100%; padding: 12px 4px 2px; }
 .holding-period-rows { display: grid; gap: 14px; }
 .holding-period-row, .holding-period-axis-row { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: 18px; }

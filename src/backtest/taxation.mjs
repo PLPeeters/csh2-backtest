@@ -1,5 +1,5 @@
 import { closingQuoteOnOrBefore } from './quotes.mjs';
-import { ANNUAL_CGT_EXEMPTION, CGT_EXEMPTION_CARRY_INCREMENT, CGT_EXEMPTION_START_YEAR, CGT_RATE, MAXIMUM_CGT_EXEMPTION, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
+import { ANNUAL_CGT_EXEMPTION, CGT_EXEMPTION_CARRY_INCREMENT, CGT_EXEMPTION_START_YEAR, CGT_RATE, euro, MAXIMUM_CGT_EXEMPTION, REYNDERS_TAX_RATE, TOB_RATE } from './shared.mjs';
 
 export function createCapitalGainsExemption(enabled) {
   return { enabled, year: CGT_EXEMPTION_START_YEAR, baseUsed: 0, carry: 0 };
@@ -44,6 +44,21 @@ export function saleForLot(lot, units, price, exemption, year, applyExemption, a
   const exemptedGain = applyExemption ? exemptGain(exemption, gain, year) : 0;
   const cgt = (gain - exemptedGain) * CGT_RATE;
   return { gross, tob, cgt, reyndersTax: 0, exoneratedCgt: exemptedGain * CGT_RATE, net: gross - tob - cgt, gain };
+}
+
+/** Calculates one buy-and-sell CSH2 position without replaying a full cash-flow ledger. */
+export function estimateSingleInvestmentLiquidationValue(investmentAmount, purchasePrice, salePrice, purchaseDate, saleDate, {
+  applyCapitalGainsExemption = false,
+  applyReyndersTax = false,
+  yearEnd2025Price
+} = {}) {
+  const units = investmentAmount * (1 - TOB_RATE) / purchasePrice;
+  const saleYear = Number(saleDate.slice(0, 4));
+  const taxPurchasePrice = !applyReyndersTax && saleYear >= CGT_EXEMPTION_START_YEAR && purchaseDate < `${CGT_EXEMPTION_START_YEAR}-01-01` && Number.isFinite(yearEnd2025Price)
+    ? Math.max(purchasePrice, yearEnd2025Price)
+    : undefined;
+  const exemption = createCapitalGainsExemption(applyCapitalGainsExemption && !applyReyndersTax);
+  return euro(saleForLot({ purchasePrice, taxPurchasePrice }, units, salePrice, exemption, saleYear, applyCapitalGainsExemption, applyReyndersTax).net);
 }
 
 export function liquidateLots(lots, prices, price, exemption, year, applyReyndersTax) {

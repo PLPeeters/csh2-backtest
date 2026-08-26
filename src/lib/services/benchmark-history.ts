@@ -6,7 +6,7 @@ export interface BenchmarkHistoryClient { prepare(request: BenchmarkHistoryReque
 
 export function benchmarkHistoryRequestKey(request: BenchmarkHistoryRequest) {
   const sourceData = currentRateModelSourceData(request.prices, request.rates);
-  return `${request.to}:${sourceData.prices}:${sourceData.rates}`;
+  return `${request.to}:${sourceData.prices}:${sourceData.rates}:${request.applyCapitalGainsExemption}:${request.totalSavingsAmount}`;
 }
 
 export function createBenchmarkHistoryClient(): BenchmarkHistoryClient {

@@ -26,6 +26,7 @@ export const defaultSettings = (): CalculationSettings => ({
   accountFidelityPremium: '',
   bestSavingsBaseInterestRate: '',
   bestSavingsFidelityPremium: '',
+  totalSavingsAmount: '',
   csh2RateScenario: 'base'
 });
 
@@ -96,6 +97,7 @@ export function loadStoredState(storage: Storage): StoredState {
     bestSavingsFidelityPremium: typeof candidate.bestSavingsFidelityPremium === 'string' || typeof candidate.bestSavingsFidelityPremium === 'number'
       ? String(candidate.bestSavingsFidelityPremium)
       : typeof candidate.accountFidelityPremium === 'string' || typeof candidate.accountFidelityPremium === 'number' ? String(candidate.accountFidelityPremium) : '',
+    totalSavingsAmount: typeof candidate.totalSavingsAmount === 'string' || typeof candidate.totalSavingsAmount === 'number' ? String(candidate.totalSavingsAmount) : defaults.totalSavingsAmount,
     csh2RateScenario: candidate.csh2RateScenario === 'cautious' || candidate.csh2RateScenario === 'optimistic' || candidate.csh2RateScenario === 'base'
       ? candidate.csh2RateScenario
       : defaults.csh2RateScenario
