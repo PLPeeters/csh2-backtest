@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateCurrentRateModel, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -744,10 +744,11 @@ test('caps accumulated capital-gains exemption carry-forward at €15,000', () =
 test('reports charged and exonerated CGT separately for a partially exempt sale', () => {
   const result = runBacktest([
     { date: '2026-01-02', type: 'inflow', amount: 10000 },
+    { date: '2026-01-03', type: 'inflow', amount: 12000 },
     { date: '2027-01-02', type: 'outflow', amount: 22000 }
   ], { '2026-01-02': 100, '2027-01-02': 230 }, '2027-01-02', { applyCapitalGainsExemption: true });
-  assert.ok(result.entries[1].cgt > 0);
-  assert.ok(result.entries[1].exoneratedCgt > 0);
+  assert.ok(result.entries[2].cgt > 0);
+  assert.ok(result.entries[2].exoneratedCgt > 0);
 });
 
 test('exonerates all positive gains from a sale before 2026', () => {
@@ -790,9 +791,120 @@ test('sells FIFO lots to meet a net outflow', () => {
 
 test('rejects an outflow that exceeds holdings', () => {
   assert.throws(() => runBacktest([
-    { date: '2026-01-02', type: 'inflow', amount: 100 },
+    { date: '2026-01-02', type: 'inflow', amount: 1000 },
     { date: '2026-02-02', type: 'outflow', amount: 1000 }
-  ], prices, '2026-03-02'), /exceeds/);
+  ], { '2026-01-02': 100, '2026-02-02': 50, '2026-03-02': 50 }, '2026-03-02'), /exceeds/);
+});
+
+test('rejects a cash-flow schedule that would require the savings account to borrow', () => {
+  assert.throws(() => runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 100 },
+    { date: '2026-02-02', type: 'outflow', amount: 150 },
+    { date: '2026-03-02', type: 'inflow', amount: 100 }
+  ], prices, '2026-03-02'), /negative balance/);
+});
+
+test('lets credited account interest fund a later withdrawal without investing that interest in CSH2', () => {
+  const result = runBacktest([
+    { date: '2026-01-02', type: 'inflow', amount: 100 },
+    { date: '2026-02-02', type: 'inflow', amount: 50, interestPayment: true },
+    { date: '2026-03-02', type: 'outflow', amount: 120 }
+  ], { '2026-01-02': 100, '2026-03-02': 150 }, '2026-03-02');
+  assert.equal(result.entries[1].interestPayment, true);
+  assert.equal(result.entries[1].units, 0);
+});
+
+test('calculates annualized money-weighted return using dated deposits, withdrawals, and terminal value', () => {
+  const annualizedReturn = calculateMoneyWeightedReturn([
+    { date: '2026-01-01', amount: -100 },
+    { date: '2026-07-01', amount: 20 },
+    { date: '2027-01-01', amount: 90 }
+  ]);
+  assert.ok(Math.abs(annualizedReturn - 11.08885) < 0.00001);
+});
+
+test('calculates exact integer-percentage XIRRs without mistaking one root for two', () => {
+  const annualizedReturn = calculateMoneyWeightedReturn([
+    { date: '2026-01-01', amount: -100 },
+    { date: '2027-01-01', amount: 200 }
+  ]);
+  assert.ok(Math.abs(annualizedReturn - 100) < 0.00001);
+});
+
+test('does not choose an arbitrary XIRR when dated cash flows have multiple roots', () => {
+  assert.equal(calculateMoneyWeightedReturn([
+    { date: '2026-01-01', amount: -100 },
+    { date: '2027-01-01', amount: 230 },
+    { date: '2028-01-01', amount: -132 }
+  ]), undefined);
+});
+
+test('geometrically links CSH2 sub-period returns and includes costs triggered by a mid-period deposit', () => {
+  const timeWeightedReturn = calculateCsh2TimeWeightedReturn([
+    { date: '2026-01-01', type: 'inflow', amount: 100 },
+    { date: '2026-07-01', type: 'inflow', amount: 100 }
+  ], {
+    '2026-01-01': 100,
+    '2026-07-01': 110,
+    '2027-01-01': 121
+  }, '2027-01-01', { buyWholeSharesOnly: false });
+  assert.ok(Math.abs(timeWeightedReturn - 18.43460286) < 0.00001);
+});
+
+test('applies the portfolio CGT exemption history to the CSH2 time-weighted return', () => {
+  const flows = [{ date: '2026-01-01', type: 'inflow', amount: 10000 }];
+  const prices = { '2026-01-01': 100, '2027-01-01': 120 };
+  const withoutExemption = calculateCsh2TimeWeightedReturn(flows, prices, '2027-01-01');
+  const withExemption = calculateCsh2TimeWeightedReturn(flows, prices, '2027-01-01', { applyCapitalGainsExemption: true });
+  assert.ok(withExemption > withoutExemption);
+});
+
+test('calculates account time-weighted return independently of deposits and withdrawals', () => {
+  const timeWeightedReturn = calculateAccountTimeWeightedReturn([
+    { date: '2026-01-01', type: 'inflow', amount: 100 },
+    { date: '2026-04-01', type: 'inflow', amount: 100 },
+    { date: '2026-07-01', type: 'inflow', amount: 10, interestPayment: true },
+    { date: '2026-09-01', type: 'outflow', amount: 100 },
+    { date: '2027-01-01', type: 'inflow', amount: 5.5, interestPayment: true }
+  ], '2027-01-01');
+  assert.ok(Math.abs(timeWeightedReturn - 10.25) < 0.00001);
+});
+
+test('applies same-day account interest before external deposits when calculating time-weighted return', () => {
+  const timeWeightedReturn = calculateAccountTimeWeightedReturn([
+    { date: '2026-01-01', type: 'inflow', amount: 100 },
+    { date: '2026-07-01', type: 'inflow', amount: 100 },
+    { date: '2026-07-01', type: 'inflow', amount: 10, interestPayment: true }
+  ], '2027-01-01');
+  assert.ok(Math.abs(timeWeightedReturn - 10) < 0.00001);
+});
+
+test('builds rebased time-weighted return series for CSH2 and the account', () => {
+  const flows = [
+    { date: '2026-01-01', type: 'inflow', amount: 100 },
+    { date: '2026-07-01', type: 'inflow', amount: 5, interestPayment: true }
+  ];
+  const csh2 = buildCsh2TimeWeightedReturnSeries(flows, {
+    '2026-01-01': 100,
+    '2026-07-01': 110,
+    '2027-01-01': 121
+  }, '2027-01-01');
+  const account = buildAccountTimeWeightedReturnSeries(flows, '2027-01-01', { accruedBaseInterest: 5.25 });
+  assert.ok(Math.abs(csh2[0].value + 0.24) < 0.00000001);
+  assert.ok(csh2.at(-1).value > 18);
+  assert.equal(account[0].value, 0);
+  assert.ok(Math.abs(account[1].value - 5) < 0.00000001);
+  assert.ok(Math.abs(account[2].value - 10.25) < 0.00000001);
+});
+
+test('builds a rebased time-weighted €STR return series', () => {
+  const series = buildOvernightTimeWeightedReturnSeries({
+    '2026-01-01': 3.6,
+    '2026-07-01': 3.6
+  }, '2026-01-01', '2027-01-01');
+  assert.equal(series[0].value, 0);
+  const expected = (overnightAccrualFactor(3.6, 181) * overnightAccrualFactor(3.6, 184) - 1) * 100;
+  assert.ok(Math.abs(series.at(-1).value - expected) < 0.00000001);
 });
 
 test('uses the preceding monthly close for dates covered only by monthly history', () => {

@@ -47,6 +47,22 @@ function interestSettingsAreValid(settings: CalculationSettings) {
     !!premium.earnedDate && Number.isFinite(Number(premium.finalPayoutAmount)) && Number(premium.finalPayoutAmount) > 0);
 }
 
+function accountBalanceByFlow(flows: CashFlowDraft[]) {
+  const balances: Record<string, number> = {};
+  const datedFlows = flows.filter((flow) => flow.date && Number.isFinite(Number(flow.amount)))
+    .toSorted((left, right) => left.date.localeCompare(right.date));
+  let balance = 0;
+  let index = 0;
+  while (index < datedFlows.length) {
+    const date = datedFlows[index].date;
+    const sameDay = [] as CashFlowDraft[];
+    while (index < datedFlows.length && datedFlows[index].date === date) sameDay.push(datedFlows[index++]);
+    balance += sameDay.reduce((sum, flow) => sum + (flow.type === 'inflow' ? Number(flow.amount) : -Number(flow.amount)), 0);
+    for (const flow of sameDay) balances[flow.id] = balance;
+  }
+  return balances;
+}
+
 export function createBacktestController(dependencies: BacktestDependencies) {
   const stored = loadStoredState(dependencies.storage);
   let flows = $state(stored.flows);
@@ -91,7 +107,9 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     get benchmark() { return benchmark; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
     get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; }, get benchmarkAfterTax() { return benchmarkAfterTax; },
     get resultIsStale() { return !!view && submittedInputSignature !== calculationInputSignature(flows, settings); },
-    get valid() { return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && interestSettingsAreValid(settings); },
+    get valid() { const balances = accountBalanceByFlow(flows); return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && !Object.values(balances).some((balance) => balance < -0.00000001) && interestSettingsAreValid(settings); },
+    get accountBalanceIsNegative() { return Object.values(accountBalanceByFlow(flows)).some((balance) => balance < -0.00000001); },
+    get accountBalance() { return flows.reduce((balance, flow) => balance + (flow.type === 'inflow' ? Number(flow.amount) || 0 : -(Number(flow.amount) || 0)), 0); },
     addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
     removeFlow(id: string) { flows = flows.filter((flow) => flow.id !== id); if (!flows.length) flows = [blankFlow()]; persist(); },
     replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },

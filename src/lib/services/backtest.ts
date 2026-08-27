@@ -1,4 +1,4 @@
-import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildBacktestReturnSeries, buildMarketReturnProjection, buildOvernightBenchmarkReturnSeries, buildProjectedAccountReturnSeries, calculateCurrentRateModel, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
+import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildMarketReturnProjection, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedAccountReturnSeries, calculateCurrentRateModel, calculateMoneyWeightedReturn, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 import { getCurrentRateModel } from './current-rate-model-cache.mjs';
@@ -20,6 +20,29 @@ function scenarioRate(model: ReturnType<typeof calculateCurrentRateModel>, scena
   return model.csh2AnnualRatePercent;
 }
 
+function portfolioValueSeries(points: CalculationView['returnSeries']['csh2'], flows: Array<{ date: string; type: 'inflow' | 'outflow'; amount: number; interestPayment?: boolean }>) {
+  const externalFlows = flows.filter((flow) => !flow.interestPayment).toSorted((left, right) => left.date.localeCompare(right.date));
+  let flowIndex = 0;
+  let inflows = 0;
+  let outflows = 0;
+  return points.map((point) => {
+    while (flowIndex < externalFlows.length && externalFlows[flowIndex].date <= point.date) {
+      const flow = externalFlows[flowIndex];
+      if (flow.type === 'inflow') inflows += flow.amount;
+      else outflows += flow.amount;
+      flowIndex += 1;
+    }
+    return { date: point.date, value: inflows * (1 + point.value / 100) - outflows };
+  });
+}
+
+function annualizedLinkedReturn(points: CalculationView['returnSeries']['csh2']) {
+  if (points.length < 2) return undefined;
+  const days = (Date.parse(`${points.at(-1)!.date}T00:00:00Z`) - Date.parse(`${points[0].date}T00:00:00Z`)) / 86_400_000;
+  const factor = 1 + points.at(-1)!.value / 100;
+  return days > 0 && factor >= 0 ? (factor ** (365 / days) - 1) * 100 : undefined;
+}
+
 interface StageEntry<T> { key: string; value: T }
 
 /** Owns one cached input per stage for one market dataset at a time. */
@@ -28,6 +51,7 @@ export function createBacktestCalculator() {
   let observedStage: StageEntry<{
     csh2: CalculationView['returnSeries']['csh2'];
     overnight: CalculationView['returnSeries']['overnight'];
+    timeWeighted: CalculationView['returnSeries']['timeWeighted'];
     simulation: Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
     observedHoldingPeriods: BacktestResult['observedHoldingPeriods'];
   }> | undefined;
@@ -72,13 +96,31 @@ export function createBacktestCalculator() {
     const calculationOptions = options(settings);
     const historicalKey = JSON.stringify([normalized, calculationOptions]);
     observedStage = getStage(observedStage, historicalKey, () => {
-      const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions);
+      const csh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions).filter((point) => point.date <= valuationDate);
       const overnight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
-      const simulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions) as Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
-      const firstPurchaseDate = simulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
+      const baseSimulation = runBacktest(normalized, market.data.prices, valuationDate, calculationOptions);
+      const firstPurchaseDate = baseSimulation.entries.find((entry) => entry.type === 'inflow' && entry.units > 0)?.date;
+      const timeWeighted = {
+        csh2: buildCsh2TimeWeightedReturnSeries(normalized, market.data.prices, valuationDate, calculationOptions),
+        overnight: firstPurchaseDate ? buildOvernightTimeWeightedReturnSeries(market.rateData.rates, firstPurchaseDate, valuationDate) : [],
+        account: buildAccountTimeWeightedReturnSeries(normalized, valuationDate, calculationOptions)
+      };
+      const externalFlows = normalized.filter((flow) => !flow.interestPayment);
+      const externalCashFlows = externalFlows.map((flow) => ({ date: flow.date, amount: flow.type === 'inflow' ? -flow.amount : flow.amount }));
+      const accountEndingValue = externalCashFlows.reduce((sum, flow) => sum - flow.amount, 0)
+        + normalized.filter((flow) => flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0)
+        + accruedBaseInterest;
+      const simulation = {
+        ...baseSimulation,
+        csh2MoneyWeightedReturn: calculateMoneyWeightedReturn([...externalCashFlows, { date: valuationDate, amount: baseSimulation.netLiquidationValue }]),
+        accountMoneyWeightedReturn: calculateMoneyWeightedReturn([...externalCashFlows, { date: valuationDate, amount: accountEndingValue }]),
+        csh2TimeWeightedReturn: annualizedLinkedReturn(timeWeighted.csh2),
+        accountTimeWeightedReturn: annualizedLinkedReturn(timeWeighted.account)
+      } as Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
       return {
         csh2,
         overnight,
+        timeWeighted,
         simulation,
         observedHoldingPeriods: firstPurchaseDate ? { from: firstPurchaseDate, ...findObservedHoldingPeriods(csh2.filter((point) => point.date >= firstPurchaseDate), overnight, firstPurchaseDate) } : {}
       };
@@ -115,6 +157,17 @@ export function createBacktestCalculator() {
       ? []
       : assessFidelityPremiumTimings(market.data.prices, valuationDate, calculationOptions, fidelityPremiums, { ...projectionAssumption, ...accountRates }) as BacktestResult['fidelityPremiumAssessments'];
     const projected = scenarioStage.value.marketProjection && projectedAccountStage.value ? { ...scenarioStage.value.marketProjection, ...projectedAccountStage.value } : undefined;
+    const portfolioValue = {
+      csh2: portfolioValueSeries(observedStage.value.csh2, normalized),
+      overnight: [],
+      account: portfolioValueSeries(accountHistoryStage.value, normalized),
+      projected: projected ? {
+        ...projected,
+        csh2: portfolioValueSeries(projected.csh2, normalized),
+        overnight: [],
+        account: portfolioValueSeries(projected.account, normalized)
+      } : undefined
+    };
     const result = {
       ...observedStage.value.simulation,
       fidelityPremiumAssessments,
@@ -128,7 +181,7 @@ export function createBacktestCalculator() {
       settings: { ...settings },
       from: firstInvestment.date,
       to: valuationDate,
-      returnSeries: { csh2: observedStage.value.csh2, overnight: observedStage.value.overnight, account: accountHistoryStage.value, projected }
+      returnSeries: { csh2: observedStage.value.csh2, overnight: observedStage.value.overnight, account: accountHistoryStage.value, projected, timeWeighted: observedStage.value.timeWeighted, portfolioValue }
     };
   };
 

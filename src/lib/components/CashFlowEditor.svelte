@@ -74,12 +74,14 @@
           <div class="flow-row">
             <label><span class="flow-field-label">Date</span><input type="date" required value={flow.date} onchange={(event) => controller.updateFlow(flow.id, 'date', event.currentTarget.value)} /></label>
             <label><span class="flow-field-label">Direction</span><select value={flow.type} onchange={(event) => controller.updateFlow(flow.id, 'type', event.currentTarget.value)}><option value="inflow">Inflow</option><option value="outflow">Outflow</option></select></label>
-            <label><span class="flow-field-label">Net amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={flow.amount} onchange={(event) => controller.updateFlow(flow.id, 'amount', event.currentTarget.value)} /></label>
+            <label><span class="flow-field-label">Net amount in euro</span><input type="number" min="0.01" step="0.01" placeholder="0.00" required value={flow.amount} oninput={(event) => controller.updateFlow(flow.id, 'amount', event.currentTarget.value)} /></label>
             <label class="interest-payment"><span class="flow-field-label">Interest payment</span><input type="checkbox" checked={flow.interestPayment} disabled={flow.type !== 'inflow'} onchange={(event) => controller.updateInterestPayment(flow.id, event.currentTarget.checked)} /></label>
             <button class="delete-button" type="button" aria-label="Remove cash flow" onclick={() => controller.removeFlow(flow.id)}>×</button>
           </div>
         {/each}
       </div>
+      <div class="flow-balance-row"><span class="flow-balance-label">Balance</span><output class:negative-balance={controller.accountBalance < 0}>{controller.accountBalance.toLocaleString('en-BE', { style: 'currency', currency: 'EUR' })}</output></div>
+      {#if controller.accountBalanceIsNegative}<p class="flow-balance-error" role="alert">Account outflows cannot make the running balance negative.</p>{/if}
       <div class="controls flow-controls"><button class="quiet" type="button" onclick={() => controller.addFlow()}>Add cash flow</button></div>
     </div>
   </details>

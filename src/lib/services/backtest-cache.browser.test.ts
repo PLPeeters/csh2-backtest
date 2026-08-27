@@ -48,6 +48,18 @@ describe('bounded backtest stage cache', () => {
     expect(zero.result.fidelityPremiumAssessments[0].waitingValue).toBeGreaterThan(0);
   });
 
+  it('exposes honest euro values separately from cash-flow-neutral performance', () => {
+    const view = createBacktestCalculator().calculate(flows, settings, market, '2026-08-20');
+
+    expect(view.returnSeries.portfolioValue.csh2.at(-1)?.value).toBeCloseTo(view.result.netLiquidationValue, 2);
+    expect(view.returnSeries.portfolioValue.account.at(-1)?.value).toBeCloseTo(10010, 10);
+    expect(view.returnSeries.portfolioValue.overnight).toEqual([]);
+    expect(view.returnSeries.timeWeighted.csh2.length).toBeGreaterThan(1);
+    expect(view.returnSeries.timeWeighted.account.at(-1)?.value).toBeCloseTo(0.1, 10);
+    expect(view.result.csh2MoneyWeightedReturn).toBeTypeOf('number');
+    expect(view.result.accountMoneyWeightedReturn).toBeTypeOf('number');
+  });
+
   it('reuses observed and scenario-independent projection history for account-rate-only changes', () => {
     const calculator = createBacktestCalculator();
     const initial = calculator.calculate(flows, settings, market, '2026-08-20');

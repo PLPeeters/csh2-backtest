@@ -281,7 +281,7 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
     const staleMessage = page.getByText('Inputs have changed. The results below still reflect your last calculation. Calculate again to update them.');
-    const chart = page.getByLabelText('Cumulative return of your account compared with CSH2 and a euro overnight benchmark portfolio using the same external cash flows');
+    const chart = page.getByLabelText('Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows');
     const initialChart = await chart.screenshot({ base64: true, save: false });
 
     await page.getByLabelText('Your account base annual rate (%)').fill('2.5');
@@ -323,7 +323,7 @@ describe('CSH2 application inputs', () => {
       loadMarketData: () => marketPromise,
       calculate: (_flows, settings) => {
         calculatedSettings = { ...settings };
-        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, rateMetadata: market.rateData, returnSeries: { csh2: [], overnight: [] }, from: '2026-08-08', to: '2026-08-08' } as unknown as CalculationView;
+        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, rateMetadata: market.rateData, returnSeries: { csh2: [], overnight: [], account: [], timeWeighted: { csh2: [], overnight: [], account: [] }, portfolioValue: { csh2: [], overnight: [], account: [] } }, from: '2026-08-08', to: '2026-08-08' } as unknown as CalculationView;
       },
       prepareBenchmark: async () => ({}) as never
     });
@@ -347,7 +347,7 @@ describe('CSH2 application inputs', () => {
       loadMarketData: async () => market,
       calculate: (flows, settings) => {
         calculations.push({ flows: flows.map((flow) => ({ amount: flow.amount })), settings: { ...settings } });
-        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, rateMetadata: market.rateData, returnSeries: { csh2: [], overnight: [], account: [] }, from: '2026-01-02', to: '2026-08-08' } as unknown as CalculationView;
+        return { settings: { ...settings }, result: { valuation: { date: '2026-08-08' } }, metadata: market.data, rateMetadata: market.rateData, returnSeries: { csh2: [], overnight: [], account: [], timeWeighted: { csh2: [], overnight: [], account: [] }, portfolioValue: { csh2: [], overnight: [], account: [] } }, from: '2026-01-02', to: '2026-08-08' } as unknown as CalculationView;
       },
       prepareBenchmark: async () => ({}) as never
     });
@@ -385,7 +385,7 @@ describe('CSH2 application inputs', () => {
         result: { valuation: { date: '2026-08-08' } },
         metadata: market.data,
         rateMetadata: market.rateData,
-        returnSeries: { csh2: [], overnight: [], account: [] },
+        returnSeries: { csh2: [], overnight: [], account: [], timeWeighted: { csh2: [], overnight: [], account: [] }, portfolioValue: { csh2: [], overnight: [], account: [] } },
         from: '2026-01-02',
         to: '2026-08-08'
       }) as unknown as CalculationView,
@@ -420,7 +420,7 @@ describe('CSH2 application inputs', () => {
         },
         metadata: market.data,
         rateMetadata: market.rateData,
-        returnSeries: { csh2: [], overnight: [], account: [] },
+        returnSeries: { csh2: [], overnight: [], account: [], timeWeighted: { csh2: [], overnight: [], account: [] }, portfolioValue: { csh2: [], overnight: [], account: [] } },
         from: '2026-01-02',
         to: '2026-08-08'
       }) as unknown as CalculationView,

@@ -2,9 +2,9 @@
   import { ColorType, createChart, LineSeries, LineStyle, LineType } from 'lightweight-charts';
   import type { IChartApi, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
   import { onMount, untrack } from 'svelte';
-  import type { BacktestSeries, BenchmarkSeries, ChartPoint } from '../types';
-  type ChartSeries = BenchmarkSeries | BacktestSeries;
-  let { data, ariaLabel, from, to }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string } = $props();
+  import type { BenchmarkSeries, ChartPoint, ComparisonSeries } from '../types';
+  type ChartSeries = BenchmarkSeries | ComparisonSeries;
+  let { data, ariaLabel, from, to, unit = 'percent' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro' } = $props();
   let host: HTMLDivElement;
   let chart: IChartApi | undefined;
   let csh2Series: ISeriesApi<'Line'> | undefined;
@@ -22,6 +22,11 @@
   let appliedTo: string | undefined;
   let legendDate = $state('');
   let legendValues = $state<{ color: string; label: string; parenthesize: boolean; value: string }[]>([]);
+  const euroValue = new Intl.NumberFormat('en-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  function formattedValue(value: number) {
+    return unit === 'euro' ? euroValue.format(value) : `${value.toFixed(2)}%`;
+  }
 
   function chartData(points: ChartPoint[]) {
     return points.map(({ date, value }) => ({ time: date as Time, value }));
@@ -91,12 +96,12 @@
         : undefined;
       const value = crosshairValue ?? carriedAccountValue ?? (!hasCrosshair ? latestPoint(...points)?.value : undefined);
       const parenthesize = hasCrosshair && typeof param?.time === 'string' && !points.some((items) => items.some((point) => point.date === param.time));
-      return value === undefined ? [] : [{ color, label, parenthesize, value: `${value.toFixed(2)}%` }];
+      return value === undefined ? [] : [{ color, label, parenthesize, value: formattedValue(value) }];
     });
   }
 
   function updateData(nextData: ChartSeries) {
-    if (nextData === loadedData || !csh2Series || !overnightSeries || !accountSeries || !projectedCsh2Series || !projectedOvernightSeries || !projectedAccountSeries || !calendarSeries) return false;
+    if (Object.is(nextData, loadedData) || !csh2Series || !overnightSeries || !accountSeries || !projectedCsh2Series || !projectedOvernightSeries || !projectedAccountSeries || !calendarSeries) return false;
     const calendar = calendarData(nextData);
     csh2Series.setData(fillForwardData(nextData.csh2, calendar));
     overnightSeries.setData(fillForwardData(nextData.overnight, calendar));
@@ -154,13 +159,13 @@
   onMount(() => {
     chartWidth = Math.floor(host.clientWidth);
     chart = createChart(host, { width: chartWidth, height: 290, layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#5b746c' }, grid: { vertLines: { visible: false }, horzLines: { visible: false } }, rightPriceScale: { borderColor: '#cbd8d1' }, timeScale: { borderColor: '#cbd8d1', timeVisible: false, fixLeftEdge: true, fixRightEdge: true }, handleScale: { axisPressedMouseMove: { time: true, price: false } } });
-    csh2Series = chart.addSeries(LineSeries, { color: '#1d6a54', lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
+    csh2Series = chart.addSeries(LineSeries, { color: '#1d6a54', lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: formattedValue } });
     csh2Series.createPriceLine({ price: 0, color: '#cbd8d1', lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: false });
-    overnightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
-    accountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineType: LineType.WithSteps, lastValueVisible: true, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
-    projectedCsh2Series = chart.addSeries(LineSeries, { color: '#1d6a54', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
-    projectedOvernightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
-    projectedAccountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineStyle: LineStyle.Dashed, lineType: LineType.WithSteps, lastValueVisible: false, priceFormat: { type: 'custom', formatter: (value: number) => `${value.toFixed(2)}%` } });
+    overnightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: formattedValue } });
+    accountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineType: LineType.WithSteps, lastValueVisible: true, priceFormat: { type: 'custom', formatter: formattedValue } });
+    projectedCsh2Series = chart.addSeries(LineSeries, { color: '#1d6a54', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
+    projectedOvernightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
+    projectedAccountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineStyle: LineStyle.Dashed, lineType: LineType.WithSteps, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
     calendarSeries = chart.addSeries(LineSeries, { lineVisible: false, lastValueVisible: false, priceLineVisible: false });
     updateData(data);
     updateRange(data, from, to, true);

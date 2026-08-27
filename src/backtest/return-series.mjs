@@ -162,6 +162,31 @@ export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from
   return forwardAnnualizedReturnSeries(points, from, lookbackDays);
 }
 
+/** Builds the cumulative €STR return, rebased to zero at the chosen start date. */
+export function buildOvernightTimeWeightedReturnSeries(rates, from, to) {
+  const points = Object.entries(rates)
+    .filter(([date, rate]) => date <= to && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right));
+  const initial = points.filter(([date]) => date <= from).at(-1);
+  if (!initial) return [];
+  let previousDate = from;
+  let previousRate = initial[1];
+  let value = 1;
+  const snapshots = [{ date: from, value: 0 }];
+  for (const [date, rate] of points) {
+    if (date <= from) continue;
+    value *= overnightAccrualFactor(previousRate, daysBetween(previousDate, date));
+    snapshots.push({ date, value: (value - 1) * 100 });
+    previousDate = date;
+    previousRate = rate;
+  }
+  if (previousDate < to) {
+    value *= overnightAccrualFactor(previousRate, daysBetween(previousDate, to));
+    snapshots.push({ date: to, value: (value - 1) * 100 });
+  }
+  return snapshots;
+}
+
 function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options) {
   const { entries } = runBacktest(flows, prices, valuationDate, options);
   let priorCash = 0;

@@ -22,8 +22,10 @@ export {
   buildForwardAnnualizedCsh2ReturnSeries,
   buildForwardAnnualizedOvernightBenchmarkReturnSeries,
   buildOvernightBenchmarkReturnSeries,
+  buildOvernightTimeWeightedReturnSeries,
   buildTrailingAnnualizedCsh2ReturnSeries,
   buildTrailingAnnualizedOvernightBenchmarkReturnSeries,
   estimateAnnualizedAfterTaxCsh2Rate,
   findObservedHoldingPeriods
 } from './backtest/return-series.mjs';
+export { buildAccountTimeWeightedReturnSeries, buildCsh2TimeWeightedReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateMoneyWeightedReturn } from './backtest/performance-returns.mjs';

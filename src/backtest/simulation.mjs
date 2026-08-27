@@ -2,10 +2,31 @@ import { closingQuoteOnOrBefore, quoteForTransaction } from './quotes.mjs';
 import { euro, TOB_RATE } from './shared.mjs';
 import { createCapitalGainsExemption, establishTaxPurchasePrice, liquidateLots, saleForLot, unitsForNetOutflow } from './taxation.mjs';
 
+function hasNegativeAccountCashFlowBalance(flows) {
+  let balance = 0;
+  let index = 0;
+  const sortedFlows = [...flows].sort((left, right) => left.date.localeCompare(right.date));
+  while (index < sortedFlows.length) {
+    const date = sortedFlows[index].date;
+    while (index < sortedFlows.length && sortedFlows[index].date === date) {
+      const flow = sortedFlows[index];
+      balance += flow.type === 'inflow' ? flow.amount : -flow.amount;
+      index += 1;
+    }
+    if (balance < -0.00000001) return true;
+  }
+  return false;
+}
+
 /** Simulates chronological CSH2 transactions, including FIFO withdrawals and terminal liquidation. */
 export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExemption = false, applyReyndersTax = false, buyWholeSharesOnly = false, accruedBaseInterest = 0, brokerTransactionFee = 0 } = {}) {
   if (!Number.isFinite(accruedBaseInterest) || accruedBaseInterest < 0) throw new Error('Accrued base interest must be a non-negative amount.');
   if (!Number.isFinite(brokerTransactionFee) || brokerTransactionFee < 0) throw new Error('Broker transaction fee must be a non-negative amount.');
+  for (const flow of flows) {
+    if (!['inflow', 'outflow'].includes(flow.type) || !Number.isFinite(flow.amount) || flow.amount <= 0) throw new Error('Every cash flow needs a positive amount and a valid type.');
+    if (flow.interestPayment && flow.type !== 'inflow') throw new Error('Only an inflow can be marked as an interest payment.');
+  }
+  if (hasNegativeAccountCashFlowBalance(flows)) throw new Error('Account inflows and outflows cannot produce a negative balance.');
   const lots = [];
   const entries = [];
   let paidTob = 0;
@@ -15,8 +36,6 @@ export function runBacktest(flows, prices, valuationDate, { applyCapitalGainsExe
   let availableCash = 0;
   const exemption = createCapitalGainsExemption(applyCapitalGainsExemption && !applyReyndersTax);
   for (const flow of [...flows].sort((left, right) => left.date.localeCompare(right.date))) {
-    if (!['inflow', 'outflow'].includes(flow.type) || !Number.isFinite(flow.amount) || flow.amount <= 0) throw new Error('Every cash flow needs a positive amount and a valid type.');
-    if (flow.interestPayment && flow.type !== 'inflow') throw new Error('Only an inflow can be marked as an interest payment.');
     if (flow.interestPayment) {
       entries.push({ ...flow, units: 0, tob: 0, brokerFee: 0, cgt: 0, reyndersTax: 0, exoneratedCgt: 0, net: 0, remainingCash: euro(availableCash) });
       continue;

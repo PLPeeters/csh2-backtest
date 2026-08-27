@@ -31,7 +31,14 @@ export interface ReturnProjection {
   csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; throughDate: string;
   csh2AnnualRatePercent: number; overnightRatePercent: number; baseAnnualRatePercent?: number;
 }
-export interface BacktestSeries extends BenchmarkSeries { account: ChartPoint[]; projected?: ReturnProjection }
+export interface ComparisonSeries extends BenchmarkSeries {
+  account: ChartPoint[];
+  projected?: ReturnProjection;
+}
+export interface BacktestSeries extends ComparisonSeries {
+  timeWeighted: BenchmarkSeries & { account: ChartPoint[] };
+  portfolioValue: ComparisonSeries;
+}
 export interface BenchmarkHistorySeries {
   lookback: Record<BackwardPeriod, BenchmarkSeries>;
   forward: Record<ForwardPeriod, BenchmarkSeries>;
@@ -89,7 +96,8 @@ export interface BacktestResult {
   valuation: { date: string; price: number }; netLiquidationValue: number; grossValue: number; units: number; availableCash: number;
   paidTob: number; paidCgt: number; paidReyndersTax: number; terminalTob: number; terminalCgt: number;
   terminalReyndersTax: number; paidBrokerFees: number; terminalBrokerFee: number; missedAmount: number;
-  missedSharePercent?: number; entries: LedgerEntry[]; breakEvenEstimate?: BreakEvenEstimate;
+  missedSharePercent?: number; csh2MoneyWeightedReturn?: number; accountMoneyWeightedReturn?: number;
+  csh2TimeWeightedReturn?: number; accountTimeWeightedReturn?: number; entries: LedgerEntry[]; breakEvenEstimate?: BreakEvenEstimate;
   observedHoldingPeriods: ObservedHoldingPeriods;
   fidelityPremiumAssessments: FidelityPremiumAssessment[];
 }
