@@ -203,6 +203,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .fidelity-timing-table { margin-bottom: 0; font-size: .8rem; }
 .fidelity-timing-table th, .fidelity-timing-table td { padding: 9px 8px; }
 .fidelity-timing-table .comparison-winner { color: #285747; font-weight: 650; }
+.fidelity-timing-table .next-year-alternative { display: block; margin-top: 3px; color: #50645a; font-weight: 500; }
 .fidelity-mobile-label { display: none; }
 .timing-notes span { display: block; }
 .timing-notes span + span { margin-top: 6px; }

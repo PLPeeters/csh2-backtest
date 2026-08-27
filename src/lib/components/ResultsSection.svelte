@@ -2,20 +2,26 @@
   import type { BacktestController } from '../state/backtest.svelte';
   import type { FidelityPremiumAssessment } from '../types';
   import { date, duration, euro, number, percent, relativeUpdatedAt, updatedAt } from '../services/formatters';
+  import { nextYearComparisonValues } from '../services/fidelity-timing.mjs';
   import LineChart from './LineChart.svelte';
   let { controller }: { controller: BacktestController } = $props();
   let returnChartMode = $state<'portfolio-value' | 'time-weighted'>('time-weighted');
 
+  const formatNextYearDifference = (label: string, difference: number) => difference <= 0.005 && difference >= -0.005
+    ? `${label} effectively equal`
+    : `${label} ${difference > 0 ? '+' : '−'}${euro.format(Math.abs(difference))}`;
+
   const nextYearComparison = (assessment: FidelityPremiumAssessment) => {
-    const values = [
-      assessment.nextYearCsh2Value === undefined ? undefined : { label: 'CSH2', value: assessment.nextYearCsh2Value },
-      assessment.nextYearAccountValue === undefined ? undefined : { label: 'Current account', value: assessment.nextYearAccountValue },
-      assessment.nextYearBestAccountValue === undefined ? undefined : { label: 'Best savings account', value: assessment.nextYearBestAccountValue }
-    ].filter((value): value is { label: string; value: number } => value !== undefined)
-      .toSorted((left, right) => right.value - left.value);
-    if (values.length < 2) return assessment.currentPeriodPreferred === 'wait' ? 'Enter rates' : '—';
-    const difference = values[0].value - values[1].value;
-    return difference <= 0.005 ? 'Effectively equal' : `${values[0].label} +${euro.format(difference)}`;
+    const comparison = nextYearComparisonValues({
+      csh2Value: assessment.nextYearCsh2Value,
+      currentAccountValue: assessment.nextYearAccountValue,
+      bestAccountValue: assessment.nextYearBestAccountValue
+    });
+    if (!comparison) return { primary: assessment.currentPeriodPreferred === 'wait' ? 'Enter rates' : '—' };
+    return {
+      primary: formatNextYearDifference(comparison.label, comparison.difference),
+      otherAlternative: comparison.otherAlternative && formatNextYearDifference(comparison.otherAlternative.label, comparison.otherAlternative.difference)
+    };
   };
 </script>
 <section id="results" aria-live="polite">
@@ -58,9 +64,10 @@
       {#if result.fidelityPremiumAssessments.length}
         <section class="metric fidelity-assessments" aria-labelledby="fidelity-timing-heading"><div class="section-title fidelity-assessments-heading"><div><p class="eyebrow">Savings account comparison</p><h3 id="fidelity-timing-heading">Fidelity premium timing</h3></div></div><div class="table-wrap"><table class="fidelity-timing-table"><thead><tr><th>Base amount</th><th>Earned</th><th>Payout</th><th>Until payout</th><th>Next full year</th><th>Recommendation</th></tr></thead><tbody>
           {#each result.fidelityPremiumAssessments as assessment (assessment.id)}
-            <tr><td><span class="fidelity-mobile-label" aria-hidden="true">Base amount</span>{euro.format(assessment.baseAmount)}</td><td><span class="fidelity-mobile-label" aria-hidden="true">Earned</span>{date.format(new Date(`${assessment.earnedDate}T00:00:00Z`))}</td><td><span class="fidelity-mobile-label" aria-hidden="true">Payout</span>{euro.format(assessment.finalPayoutAmount)}</td><td class:comparison-winner={assessment.currentPeriodPreferred !== 'either'}><span class="fidelity-mobile-label" aria-hidden="true">Until payout</span>{assessment.currentPeriodPreferred === 'move now' ? `CSH2 +${euro.format(Math.abs(assessment.currentPeriodDifference))}` : assessment.currentPeriodPreferred === 'move to best account' ? 'Best savings account' : assessment.currentPeriodPreferred === 'wait' ? `Current account +${euro.format(Math.abs(assessment.currentPeriodDifference))}` : 'Effectively equal'}</td><td class:comparison-winner={assessment.nextYearCsh2Value !== undefined && assessment.nextYearAccountValue !== undefined}><span class="fidelity-mobile-label" aria-hidden="true">Next full year</span>{nextYearComparison(assessment)}</td><td class="timing-recommendation"><span class="fidelity-mobile-label" aria-hidden="true">Recommendation</span>{assessment.recommendation === 'move now' ? 'Transfer to CSH2 now' : assessment.recommendation === 'move to best account' ? 'Transfer to best savings account now' : assessment.recommendation === 'move after payout' ? `Transfer to CSH2 on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : assessment.recommendation === 'move to best account after payout' ? `Transfer to best savings account on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : assessment.recommendation === 'keep in account' ? 'Keep in current account' : assessment.recommendation === 'wait, then reassess' ? `Reassess on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : 'Either'}</td></tr>
+            {@const nextYear = nextYearComparison(assessment)}
+            <tr><td><span class="fidelity-mobile-label" aria-hidden="true">Base amount</span>{euro.format(assessment.baseAmount)}</td><td><span class="fidelity-mobile-label" aria-hidden="true">Earned</span>{date.format(new Date(`${assessment.earnedDate}T00:00:00Z`))}</td><td><span class="fidelity-mobile-label" aria-hidden="true">Payout</span>{euro.format(assessment.finalPayoutAmount)}</td><td class:comparison-winner={assessment.currentPeriodPreferred !== 'either'}><span class="fidelity-mobile-label" aria-hidden="true">Until payout</span>{assessment.currentPeriodPreferred === 'move now' ? `CSH2 +${euro.format(Math.abs(assessment.currentPeriodDifference))}` : assessment.currentPeriodPreferred === 'move to best account' ? 'Best savings account' : assessment.currentPeriodPreferred === 'wait' ? `Current account +${euro.format(Math.abs(assessment.currentPeriodDifference))}` : 'Effectively equal'}</td><td class:comparison-winner={assessment.nextYearCsh2Value !== undefined && assessment.nextYearAccountValue !== undefined}><span class="fidelity-mobile-label" aria-hidden="true">Next full year</span>{nextYear.primary}{#if nextYear.otherAlternative}<span class="next-year-alternative">{nextYear.otherAlternative}</span>{/if}</td><td class="timing-recommendation"><span class="fidelity-mobile-label" aria-hidden="true">Recommendation</span>{assessment.recommendation === 'move now' ? 'Transfer to CSH2 now' : assessment.recommendation === 'move to best account' ? 'Transfer to best savings account now' : assessment.recommendation === 'move after payout' ? `Transfer to CSH2 on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : assessment.recommendation === 'move to best account after payout' ? `Transfer to best savings account on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : assessment.recommendation === 'keep in account' ? 'Keep in current account' : assessment.recommendation === 'wait, then reassess' ? `Reassess on ${date.format(new Date(`${assessment.transferDate}T00:00:00Z`))}` : 'Either'}</td></tr>
           {/each}
-        </tbody></table></div><small class="timing-notes"><span>Ordered by the recommended transfer or reassessment date, with keep decisions last. Each row is one cash-transfer recommendation; legal tranche allocation is handled internally.</span><span><b>Until payout</b> compares moving now to CSH2 or the best available savings account with keeping the money in your current account until the entered payout.<br><b>Next full year</b> compares CSH2 with both savings accounts after the current premium is earned.</span><span>Withdrawal priority is recalculated after each premium is acquired. Timing calculations use fractional shares, and amounts transferred on the same date are combined into one CSH2 purchase.</span><span>Uses the selected CSH2 rate scenario of {percent(result.fidelityPremiumAssessments[0].csh2AnnualRatePercent)}% and the selected transaction and tax settings.</span></small></section>
+        </tbody></table></div><small class="timing-notes"><span>Ordered by the recommended transfer or reassessment date, with keep decisions last. Each row is one cash-transfer recommendation; legal tranche allocation is handled internally.</span><span><b>Until payout</b> compares moving now to CSH2 or the best available savings account with keeping the money in your current account until the entered payout.<br><b>Next full year</b> compares CSH2 and the best available savings account with your current savings account after the current premium is earned.</span><span>Withdrawal priority is recalculated after each premium is acquired. Timing calculations use fractional shares, and amounts transferred on the same date are combined into one CSH2 purchase.</span><span>Uses the selected CSH2 rate scenario of {percent(result.fidelityPremiumAssessments[0].csh2AnnualRatePercent)}% and the selected transaction and tax settings.</span></small></section>
       {/if}
     </div>
 {/if}
