@@ -13,6 +13,7 @@
   const benchmarkClient = createBenchmarkHistoryClient();
   const controller = createBacktestController({ storage: localStorage, today: () => new Date().toISOString().slice(0, 10), loadMarketData, calculate: calculateBacktest, prepareBenchmark: (request) => benchmarkClient.prepare(request) });
   void controller.loadBenchmark();
+  if (controller.valid) void controller.calculate();
   onDestroy(() => benchmarkClient.dispose());
 </script>
 <svelte:head><script async defer src="https://buttons.github.io/buttons.js"></script></svelte:head>

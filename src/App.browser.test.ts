@@ -246,6 +246,14 @@ describe('CSH2 application inputs', () => {
     await expect.element(taxRegime.getByRole('button', { name: '30% Reynders Tax' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('calculates valid saved inputs on page load', async () => {
+    localStorage.setItem('csh2-belgium-flows-v1', JSON.stringify([{ date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }]));
+    render(App);
+
+    await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+    await expect.element(page.getByText(/^Calculated using the .* close\.$/)).toBeVisible();
+  });
+
   it('calculates the example and remembers independent benchmark periods', async () => {
     render(App);
     await page.getByRole('button', { name: 'Load example' }).click();
