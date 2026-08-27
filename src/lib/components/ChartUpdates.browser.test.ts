@@ -249,6 +249,7 @@ describe('chart update paths', () => {
     await expect.element(result.getByText('€STR 0.45%', { exact: true })).toBeVisible();
     await expect.element(result.getByText('Your account 0.67%', { exact: true })).toBeVisible();
     await expect.element(result.getByText('1 Jan 2026', { exact: true })).toBeVisible();
+    await expect.element(result.getByText('CSH2 1.23%', { exact: true }).locator('..')).toHaveStyle({ zIndex: '4' });
 
     handler({
       time: '2026-01-02',

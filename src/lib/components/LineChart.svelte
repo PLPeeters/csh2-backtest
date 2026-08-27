@@ -172,15 +172,16 @@
 </script>
 <div bind:this={host} class="chart" aria-label={ariaLabel}>
   <div class="chart-legend" aria-hidden="true">
-    {#if legendDate}<span class="chart-legend-date">{legendDate}</span>{/if}
+    {#if legendDate}<span class="chart-legend-entry chart-legend-date">{legendDate}</span>{/if}
     {#each legendValues as item}
-      <span style={`color: ${item.color}`}>{item.label} {item.parenthesize ? `(${item.value})` : item.value}</span>
+      <span class="chart-legend-entry" style={`color: ${item.color}`}>{item.label} {item.parenthesize ? `(${item.value})` : item.value}</span>
     {/each}
   </div>
 </div>
 
 <style>
   .chart { position: relative; }
-  .chart-legend { position: absolute; z-index: 1; top: 8px; left: 10px; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 3px; background: white; font-size: 0.8rem; font-weight: 600; pointer-events: none; }
+  .chart-legend { position: absolute; z-index: 4; top: 8px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 0.8rem; font-weight: 600; pointer-events: none; }
+  .chart-legend-entry { padding: 2px 4px; background: white; }
   .chart-legend-date { color: #5b746c; }
 </style>
