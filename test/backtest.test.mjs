@@ -559,8 +559,8 @@ test('calculates the regression model and annual MAE periods dynamically from pu
   assert.equal(model.csh2AnnualRateHighPercent, Number(model.csh2AnnualRateHighPercent.toFixed(8)));
   assert.ok(model.csh2AnnualRateLowPercent < model.csh2AnnualRatePercent);
   assert.ok(model.csh2AnnualRateHighPercent > model.csh2AnnualRatePercent);
-  assert.equal(model.csh2AnnualRateLowPercent, model.csh2AnnualRatePercent - model.modelErrorAnnualRatePercent);
-  assert.equal(model.csh2AnnualRateHighPercent, model.csh2AnnualRatePercent + model.modelErrorAnnualRatePercent);
+  assert.equal(model.csh2AnnualRateLowPercent, Number((model.csh2AnnualRatePercent - model.modelErrorAnnualRatePercent).toFixed(8)));
+  assert.equal(model.csh2AnnualRateHighPercent, Number((model.csh2AnnualRatePercent + model.modelErrorAnnualRatePercent).toFixed(8)));
 
   const health = assessCurrentRateModelHealth(priceEnvelope.prices, rateEnvelope.rates, model.valuationDate);
   assert.equal(health.healthy, true, health.issues.join(' '));
