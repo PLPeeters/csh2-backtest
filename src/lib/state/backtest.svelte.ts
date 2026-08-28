@@ -1,5 +1,5 @@
 import type { BenchmarkDirection, BenchmarkHistory, BenchmarkHistoryRequest, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
-import { blankFidelityPremium, blankFlow, clearStoredState, createFlowId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
+import { blankFidelityPremium, blankFlow, clearStoredState, createFlowId, createPremiumId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
 export interface BacktestDependencies {
@@ -63,6 +63,30 @@ function accountBalanceByFlow(flows: CashFlowDraft[]) {
   return balances;
 }
 
+function currentEstrRate(rates: MarketDataBundle['rateData']['rates'], today: string) {
+  const latest = Object.entries(rates)
+    .filter(([date, rate]) => date <= today && Number.isFinite(rate) && rate > -100)
+    .toSorted(([left], [right]) => left.localeCompare(right))
+    .at(-1);
+  if (!latest) throw new Error('The latest €STR rate is unavailable.');
+  return latest[1];
+}
+
+function roundedRate(rate: number) {
+  return Math.round(rate * 100) / 100;
+}
+
+function calendarDaysBetween(from: string, to: string) {
+  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000);
+}
+
+function oneYearAfter(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  const targetYear = year + 1;
+  const lastDayOfMonth = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+  return new Date(Date.UTC(targetYear, month - 1, Math.min(day, lastDayOfMonth))).toISOString().slice(0, 10);
+}
+
 export function createBacktestController(dependencies: BacktestDependencies) {
   const stored = loadStoredState(dependencies.storage);
   let flows = $state(stored.flows);
@@ -74,7 +98,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   let direction = $state<BenchmarkDirection>('backward');
   let backwardPeriod = $state<BackwardPeriod>('1y');
   let forwardPeriod = $state<ForwardPeriod>('1y');
-  let benchmarkAfterTax = $state(false);
+  let benchmarkAfterTax = $state(true);
   let submittedInputSignature = $state<string>();
   let submittedFlowsSnapshot: CashFlowDraft[] | undefined;
   let requestGeneration = 0;
@@ -152,7 +176,35 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         })();
       }, 250);
     },
-    loadExample() { flows = [{ id: createFlowId(), date: '2025-04-01', type: 'inflow', amount: '5000', interestPayment: false }, { id: createFlowId(), date: '2025-10-01', type: 'inflow', amount: '750', interestPayment: false }, { id: createFlowId(), date: '2026-04-01', type: 'outflow', amount: '600', interestPayment: false }]; persist(); status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' }; },
+    async loadExample() {
+      status = { kind: 'loading', message: 'Loading the example with the latest €STR rate…' };
+      try {
+        const market = await dependencies.loadMarketData();
+        const estr = currentEstrRate(market.rateData.rates, dependencies.today());
+        const baseRate = roundedRate(estr * 2 / 3);
+        const fidelityPremium = roundedRate(estr - baseRate);
+        const initialDepositAmount = 5000;
+        const interestPaymentDate = '2026-01-01';
+        const deposits = [{ date: '2025-04-01', amount: initialDepositAmount }, { date: '2025-10-01', amount: 750 }];
+        const paidInterest = Math.round(deposits.reduce((total, deposit) => total + deposit.amount * baseRate / 100 * calendarDaysBetween(deposit.date, interestPaymentDate) / 365, 0) * 100) / 100;
+        const premiumTranches = deposits.map((deposit) => ({ id: createPremiumId(), baseAmount: String(deposit.amount), earnedDate: oneYearAfter(deposit.date), finalPayoutAmount: String(Math.round(deposit.amount * fidelityPremium) / 100) }));
+        const paidPremiums = premiumTranches.filter((premium) => premium.earnedDate <= dependencies.today());
+        flows = [
+          ...deposits.map((deposit) => ({ id: createFlowId(), date: deposit.date, type: 'inflow' as const, amount: String(deposit.amount), interestPayment: false })),
+          { id: createFlowId(), date: interestPaymentDate, type: 'inflow' as const, amount: String(paidInterest), interestPayment: true },
+          ...paidPremiums.map((premium) => ({ id: createFlowId(), date: premium.earnedDate, type: 'inflow' as const, amount: premium.finalPayoutAmount, interestPayment: true })),
+          { id: createFlowId(), date: '2026-07-01', type: 'outflow' as const, amount: '600', interestPayment: false }
+        ].toSorted((left, right) => left.date.localeCompare(right.date));
+        settings.accruedBaseInterest = '30';
+        settings.accountBaseInterestRate = String(baseRate);
+        settings.accountFidelityPremium = String(fidelityPremium);
+        settings.fidelityPremiums = premiumTranches.filter((premium) => premium.earnedDate > dependencies.today());
+        persist();
+        status = { kind: 'idle', message: 'Example loaded. Calculate when ready.' };
+      } catch (error) {
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
     clear() { if (savingsAmountRefreshTimeout) clearTimeout(savingsAmountRefreshTimeout); clearStoredState(dependencies.storage); flows = [blankFlow()]; settings = defaultSettings(); view = undefined; submittedFlowsSnapshot = undefined; submittedInputSignature = undefined; status = { kind: 'success', message: 'All locally saved cash flows and settings were cleared.' }; },
     setDirection(value: BenchmarkDirection) { direction = value; },
     setPeriod(value: BackwardPeriod | ForwardPeriod) { if (direction === 'backward') backwardPeriod = value as BackwardPeriod; else forwardPeriod = value as ForwardPeriod; },

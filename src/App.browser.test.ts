@@ -161,7 +161,14 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Add cash flow' }).click();
     await expect.element(page.getByLabelText('Date')).toHaveLength(2);
     await page.getByRole('button', { name: 'Load example' }).click();
-    await expect.element(page.getByLabelText('Date')).toHaveLength(3);
+    await expect.element(page.getByLabelText('Date')).toHaveLength(5);
+    await expect.element(page.getByRole('checkbox', { name: 'Interest payment' }).nth(2)).toBeChecked();
+    await expect.element(page.getByRole('checkbox', { name: 'Interest payment' }).nth(3)).toBeChecked();
+    await expect.element(page.getByLabelText('Accrued base interest (€)')).toHaveValue(30);
+    await expect.element(page.getByLabelText('Fidelity premium 1 base amount in euro')).toHaveValue(750);
+    await expect.element(page.getByLabelText('Fidelity premium 2 base amount in euro')).toHaveLength(0);
+    await expect.element(page.getByLabelText('Fidelity premium 1 earned on')).toHaveValue('2026-10-01');
+    await expect.element(page.getByLabelText('Fidelity premium 1 final payout in euro')).toBeVisible();
     const calculate = page.getByRole('button', { name: 'Calculate with latest data' });
     await expect.element(calculate).toBeEnabled();
     await fidelityPremium.fill('-1');
@@ -344,6 +351,30 @@ describe('CSH2 application inputs', () => {
     expect(calculatedSettings?.buyWholeSharesOnly).toBe(true);
     expect(controller.view?.settings.buyWholeSharesOnly).toBe(true);
     expect(controller.resultIsStale).toBe(true);
+  });
+
+  it('loads an example savings account at the latest €STR rate', async () => {
+    const controller = createBacktestController({
+      storage: localStorage,
+      today: () => '2026-08-10',
+      loadMarketData: async () => ({ data: { cachedAt: '2026-08-10T00:00:00Z', prices: {} }, rateData: { rates: { '2026-08-08': 2.187, '2026-08-11': 2.19 } }, version: 'test' }),
+      calculate: () => ({}) as CalculationView,
+      prepareBenchmark: async () => ({}) as never
+    });
+
+    await controller.loadExample();
+
+    expect(controller.flows).toHaveLength(5);
+    expect(controller.flows.filter((flow) => flow.interestPayment)).toMatchObject([
+      { date: '2026-01-01', amount: '57.76' },
+      { date: '2026-04-01', amount: '36.5' }
+    ]);
+    expect(controller.settings.accruedBaseInterest).toBe('30');
+    expect(controller.settings.accountBaseInterestRate).toBe('1.46');
+    expect(controller.settings.accountFidelityPremium).toBe('0.73');
+    expect(controller.settings.fidelityPremiums).toMatchObject([
+      { baseAmount: '750', earnedDate: '2026-10-01', finalPayoutAmount: '5.48' }
+    ]);
   });
 
   it('recalculates only the submitted backtest snapshot when the global tax regime changes', async () => {
