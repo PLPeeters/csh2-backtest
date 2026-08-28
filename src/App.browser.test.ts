@@ -279,13 +279,14 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Backward' }).click();
     await expect.element(page.getByRole('group', { name: 'Backward comparison period' }).getByRole('button', { name: '3M' })).toHaveAttribute('aria-pressed', 'true');
     const taxTreatment = page.getByRole('group', { name: 'Tax treatment' });
-    await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'true');
-    await taxTreatment.getByRole('button', { name: 'After tax' }).click();
+    await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'false');
+    await expect.element(taxTreatment.getByRole('button', { name: 'After tax' })).toHaveAttribute('aria-pressed', 'true');
     await expect.element(page.getByText(/applying the annual CGT exemption/)).toBeVisible();
     await expect.element(page.getByText(/The euro overnight benchmark is unchanged/)).toBeVisible();
     await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '30% Reynders Tax' }).click();
-    await expect.element(page.getByText(/plus 30% Reynders Tax/)).toBeVisible();
-    await expect.element(taxTreatment.getByRole('button', { name: 'After tax' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(page.getByText(/CSH2 includes buy and sell TOB plus 30% Reynders Tax/)).toBeVisible();
+    await taxTreatment.getByRole('button', { name: 'Gross' }).click()
+    await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: 'Forward' }).click();
     await expect.element(page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
   });
