@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchWithBackoff } from './fetch-with-backoff.mjs';
+import { marketDate, publishCsh2Prices } from './csh2-price-publication.mjs';
 import { parseRefreshMode } from './refresh-data-mode.mjs';
 import { assertCalculatedCurrentRateModelHealthy, calculateCurrentRateModel } from '../src/backtest.mjs';
 import { publishCurrentRateModel } from '../src/lib/services/current-rate-model-publication.mjs';
@@ -16,7 +17,7 @@ const currentRateModelPath = resolve(root, 'src/assets/data/current-rate-model.j
 const historicalStart = '2015-03-13';
 const estrCorrectionWindowDays = 7;
 const marketDataRetryDelaysMilliseconds = [10_000, 20_000, 40_000, 80_000];
-const today = new Date().toISOString().slice(0, 10);
+const today = marketDate();
 const benchmarkSegments = [
   { id: 'eonia', label: 'EONIA', start: '2015-03-13', end: '2018-08-31', series: 'EON/D.EONIA_TO.RATE' },
   { id: 'pre-estr', label: 'Pre-Euro Short-Term Rate', start: '2018-09-03', end: '2019-09-30', series: 'MMSR/B.U2._X._Z.S12._Z.U.BO.WT.D76.MA._Z._Z.EUR._Z' },
@@ -38,23 +39,6 @@ async function writeJson(path, value) {
 function dateFromUnix(timestamp) { return new Date(timestamp * 1000).toISOString().slice(0, 10); }
 function sortByDate(records) {
   return Object.fromEntries(Object.entries(records).sort(([left], [right]) => left.localeCompare(right)));
-}
-function publishedPricesWithFallbacks(prices, endDate) {
-  const publishedPrices = {};
-  const firstDate = Object.keys(prices).sort()[0];
-  let sourceDate;
-  let sourceClose;
-  for (let date = firstDate; date <= endDate; date = dayAfter(date)) {
-    const price = prices[date];
-    if (price) {
-      publishedPrices[date] = price;
-      sourceDate = date;
-      sourceClose = price.close;
-    } else if (sourceDate) {
-      publishedPrices[date] = { close: sourceClose, isFallback: true, fallbackSource: sourceDate };
-    }
-  }
-  return publishedPrices;
 }
 function dayAfter(date) {
   const value = new Date(`${date}T00:00:00Z`);
@@ -117,7 +101,7 @@ function parseRates(text, label) {
   return rates;
 }
 
-let appendedPrices = 0;
+let fetchedPrices = 0;
 let changedRates = 0;
 const [existingPrices, existingBenchmark, benchmarkExists, existingPublication] = await Promise.all([
   readJson(pricePath, { prices: {} }),
@@ -135,10 +119,10 @@ if (refreshMode.csh2) {
   const lastHistoryDate = Object.keys(historyPrices).sort().at(-1);
   if (!lastHistoryDate) throw new Error('CSH2 history contains no prices.');
   const dailyPrices = lastHistoryDate < today ? await fetchDailyPrices(dayAfter(lastHistoryDate)) : {};
-  const publishedPrices = publishedPricesWithFallbacks(sortByDate({ ...historyPrices, ...dailyPrices }), today);
+  const publishedPrices = publishCsh2Prices(existingPrices.prices, dailyPrices, today);
   pricesChanged = !sameRecords(existingPrices.prices, publishedPrices) || existingPrices.source !== priceSource;
   if (pricesChanged) publishedPriceEnvelope = { source: priceSource, cachedAt: new Date().toISOString(), prices: publishedPrices };
-  appendedPrices = Object.keys(dailyPrices).length;
+  fetchedPrices = Object.keys(dailyPrices).length;
 }
 
 if (refreshMode.overnightRates) {
@@ -172,4 +156,4 @@ if (ratesChanged) await writeJson(benchmarkPath, publishedBenchmarkEnvelope);
 if (!sameRecords(existingPublication, publication)) await writeJson(currentRateModelPath, publication);
 if (refreshMode.overnightRates && await pathExists(legacyRatePath)) await rm(legacyRatePath);
 
-console.log(`Appended ${appendedPrices} daily CSH2 records and updated ${changedRates} Euro overnight benchmark records as of ${today}.`);
+console.log(`Fetched ${fetchedPrices} daily CSH2 records; CSH2 publication ${pricesChanged ? 'changed' : 'unchanged'} and ${changedRates} Euro overnight benchmark records updated as of Brussels market date ${today}.`);
