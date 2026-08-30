@@ -33,7 +33,24 @@
   {@const returnDifference = result.csh2MoneyWeightedReturn !== undefined && result.accountMoneyWeightedReturn !== undefined ? result.csh2MoneyWeightedReturn - result.accountMoneyWeightedReturn : undefined}
   {@const csh2UpdatedAt = new Date(controller.view.metadata.cachedAt)}
   {@const estrUpdatedAt = controller.view.rateMetadata.cachedAt ? new Date(controller.view.rateMetadata.cachedAt) : undefined}
-    <div class="result-heading"><div><p class="eyebrow">As of {result.valuation.date}</p><h2>Backtest result</h2></div><p class="source"><span class="timestamp-wrapper"><button type="button" class="timestamp" aria-describedby="csh2-update-tooltip">CSH2 data last updated {relativeUpdatedAt(csh2UpdatedAt)}</button><span id="csh2-update-tooltip" class="timestamp-tooltip" role="tooltip">{updatedAt.format(csh2UpdatedAt)}</span></span><br />{#if estrUpdatedAt}<span class="timestamp-wrapper"><button type="button" class="timestamp" aria-describedby="estr-update-tooltip">€STR data last updated {relativeUpdatedAt(estrUpdatedAt)}</button><span id="estr-update-tooltip" class="timestamp-tooltip" role="tooltip">{updatedAt.format(estrUpdatedAt)}</span></span>{:else}<span>€STR data last updated unavailable</span>{/if}</p></div>
+    <div class="result-heading">
+      <div>
+        <p class="eyebrow">As of {result.valuation.date}</p>
+        <h2>Backtest result</h2>
+      </div>
+      <p class="source">
+        CSH2 data last updated
+        <time class="timestamp" datetime={controller.view.metadata.cachedAt} title={updatedAt.format(csh2UpdatedAt)} data-tooltip={updatedAt.format(csh2UpdatedAt)}>{relativeUpdatedAt(csh2UpdatedAt)}</time>
+        <br />
+        {#if estrUpdatedAt}
+          €STR rate last updated
+          <time class="timestamp" datetime={controller.view.rateMetadata.cachedAt} title={updatedAt.format(estrUpdatedAt)} data-tooltip={updatedAt.format(estrUpdatedAt)}>{relativeUpdatedAt(estrUpdatedAt)}</time>
+          (source: ECB statistics)
+        {:else}
+          €STR rate last update unavailable (source: ECB statistics)
+        {/if}
+      </p>
+    </div>
     <div class="metrics">
       <div class="metric-row metric-row-values outcome-returns"><article class="metric main"><p>CSH2 annualized money-weighted return</p><strong>{result.csh2MoneyWeightedReturn === undefined ? '—' : `${percent(result.csh2MoneyWeightedReturn)}%`}</strong><small>Your annualized outcome from the dated deposits and withdrawals, after transaction costs and the selected taxes.</small></article><article class="metric main"><p>Account annualized money-weighted return</p><strong>{result.accountMoneyWeightedReturn === undefined ? '—' : `${percent(result.accountMoneyWeightedReturn)}%`}</strong><small>Your annualized account outcome from the same external cash flows, credited interest, and entered accrued base interest.</small></article></div>
       <article class:negative class="metric missed-result"><p>{valuesAreEqual ? 'CSH2 and your account have the same value' : negative ? 'CSH2 is behind your account balance by' : 'CSH2 is ahead of your account balance by'}</p><strong>{euro.format(Math.abs(result.missedAmount))}</strong><small>{returnDifference === undefined ? 'A unique annualized money-weighted return is not available for these cash flows.' : Math.abs(returnDifference) < 0.005 ? 'The annualized money-weighted returns are effectively equal.' : `The annualized money-weighted return difference is ${percent(Math.abs(returnDifference))} percentage points in ${returnDifference >= 0 ? 'CSH2’s' : 'your account’s'} favour.`}</small>

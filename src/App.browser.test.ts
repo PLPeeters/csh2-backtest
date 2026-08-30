@@ -268,11 +268,13 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
     await expect.element(page.getByText('CSH2 backtest first broke even after')).toBeVisible();
     await expect.element(page.getByText('CSH2 backtest first matched €STR after')).toBeVisible();
-    const csh2Update = page.getByText(/^CSH2 data last updated/);
-    const estrUpdate = page.getByText(/^€STR data last updated/);
-    await expect.element(csh2Update).toHaveTextContent(/ago$/);
-    await expect.element(estrUpdate).toHaveTextContent(/ago$/);
-    await expect.element(page.getByRole('tooltip')).toHaveLength(2);
+    const updatedTimes = page.getByText(/ago$/, { exact: true });
+    await expect.element(updatedTimes).toHaveLength(2);
+    await expect.element(updatedTimes.nth(0)).toHaveTextContent(/ago$/);
+    await expect.element(updatedTimes.nth(1)).toHaveTextContent(/ago$/);
+    await expect.element(page.getByText('€STR rate last updated')).toBeVisible();
+    await expect.element(page.getByText('(source: ECB statistics)')).toBeVisible();
+    await expect.element(page.getByRole('tooltip')).toHaveLength(0);
     await page.getByRole('group', { name: 'Backward comparison period' }).getByRole('button', { name: '3M' }).click();
     await page.getByRole('button', { name: 'Forward' }).click();
     await page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' }).click();
