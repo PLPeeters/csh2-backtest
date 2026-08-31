@@ -36,8 +36,8 @@ Open the URL printed by Vite, normally <http://localhost:5173>.
 
 ## Market data
 
-The app uses bundled CSH2 prices, euro overnight rates, and a validated current-rate
-model, so it does not contact financial-data providers while calculating. A cash
+The app uses bundled CSH2 prices, euro overnight rates, Belgian consumer price index
+(CPI), and a validated current-rate model, so it does not contact data providers while calculating. A cash
 flow uses the closing price on its date, or the latest earlier market close.
 
 Refresh the bundled datasets with:
@@ -48,7 +48,17 @@ npm run refresh-data
 
 You can refresh the source datasets separately with `npm run refresh-csh2` and
 `npm run refresh-overnight-rates`. Both commands regenerate and validate the shared
-current-rate model against the resulting pair of datasets.
+current-rate model against the resulting pair of datasets. Refresh only Belgian CPI
+with `npm run refresh-cpi`; its workflow runs each Monday at 10:30 Europe/Brussels.
+
+Belgian CPI is sourced from Statbel (Directorate-General Statistics – Statistics
+Belgium), data source `314984ea-123f-4c42-93e5-4942cb877795`, using historical
+backfill view `942375c9-71d5-4d0c-9120-e051bd58b9d5` and current published view
+`86586e27-90ac-47c6-87ce-64b63194e605`, under
+[CC BY 4.0](https://statbel.fgov.be/en/cc-40). The data was adapted by selecting
+the monthly all-items series, deduplicating, rebasing, and normalizing observations.
+Coverage begins in January 2016, so full-period real returns before then are
+unavailable. See [NOTICE.md](NOTICE.md) for the complete data notice.
 
 To regenerate the published model from the currently bundled datasets only (with no
 network requests), run `npm run update-current-rate-model`.

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import prices from '../../assets/data/csh2-prices.json';
 import rates from '../../assets/data/overnight-rates.json';
+import cpi from '../../assets/data/cpi.json';
 import type { CalculationSettings, CashFlowDraft, MarketDataBundle } from '../types';
 import { calculateBacktest, clearBacktestStageCache, createBacktestCalculator } from './backtest';
 import { clearCurrentRateModelCache } from './current-rate-model-cache.mjs';
 
-const market = { data: prices, rateData: rates, version: 'published-test-data' } as MarketDataBundle;
+const market = { data: prices, rateData: rates, cpiData: cpi, version: 'published-test-data' } as MarketDataBundle;
 const flows: CashFlowDraft[] = [{ id: 'flow-1', date: '2026-01-02', type: 'inflow', amount: '10000', interestPayment: false }];
 const settings: CalculationSettings = {
   applyCapitalGainsExemption: true,
@@ -19,7 +20,8 @@ const settings: CalculationSettings = {
   bestSavingsBaseInterestRate: '1.5',
   bestSavingsFidelityPremium: '0.5',
   totalSavingsAmount: '',
-  csh2RateScenario: 'base'
+  csh2RateScenario: 'base',
+  returnMode: 'nominal'
 };
 
 function changedSettings(change: Partial<CalculationSettings>): CalculationSettings {
@@ -56,8 +58,45 @@ describe('bounded backtest stage cache', () => {
     expect(view.returnSeries.portfolioValue.overnight).toEqual([]);
     expect(view.returnSeries.timeWeighted.csh2.length).toBeGreaterThan(1);
     expect(view.returnSeries.timeWeighted.account.at(-1)?.value).toBeCloseTo(0.1, 10);
+    expect(view.returnSeries.timeWeighted.projected?.throughDate).toBe('2027-03-01');
+    expect(view.returnSeries.timeWeighted.projected?.csh2[0].date).toBe(view.to);
+    expect(view.returnSeries.timeWeighted.projected?.overnight[0].date).toBe(view.to);
+    expect(view.returnSeries.timeWeighted.projected?.account[0].date).toBe(view.to);
+    expect(view.returnSeries.timeWeighted.projected?.csh2[0].value).toBeCloseTo(view.returnSeries.timeWeighted.csh2.at(-1)!.value, 10);
+    expect(view.returnSeries.timeWeighted.projected?.account[0].value).toBeCloseTo(view.returnSeries.timeWeighted.account.at(-1)!.value, 10);
+    expect(view.returnSeries.timeWeighted.projected?.overnight[0].value).toBeCloseTo(view.returnSeries.timeWeighted.overnight.at(-1)!.value, 10);
     expect(view.result.csh2MoneyWeightedReturn).toBeTypeOf('number');
     expect(view.result.accountMoneyWeightedReturn).toBeTypeOf('number');
+  });
+
+  it('changes return presentation in real mode without changing nominal euro economics', () => {
+    const calculator = createBacktestCalculator();
+    const nominal = calculator.calculate(flows, settings, market, '2026-08-20');
+    const real = calculator.calculate(flows, changedSettings({ returnMode: 'real' }), market, '2026-08-20');
+
+    expect(real.result.csh2MoneyWeightedReturn).not.toBe(nominal.result.csh2MoneyWeightedReturn);
+    expect(real.result.netLiquidationValue).toBe(nominal.result.netLiquidationValue);
+    expect(real.result.paidTob).toBe(nominal.result.paidTob);
+    expect(real.result.terminalCgt).toBe(nominal.result.terminalCgt);
+    expect(real.result.observedHoldingPeriods).toEqual(nominal.result.observedHoldingPeriods);
+    expect(real.returnSeries.portfolioValue).toEqual(nominal.returnSeries.portfolioValue);
+    expect(real.returnSeries.timeWeighted.csh2.some((point) => point.cpiStatus === 'extrapolated')).toBe(true);
+    expect(real.returnSeries.timeWeighted.projected?.csh2.at(-1)?.cpiStatus).toBe('extrapolated');
+    expect(real.returnSeries.timeWeighted.projected?.account.at(-1)?.cpiStatus).toBe('extrapolated');
+  });
+
+  it('keeps future external cash flows out of projected TWR while preserving the value projection', () => {
+    const calculator = createBacktestCalculator();
+    const historical = calculator.calculate(flows, settings, market, '2026-08-20');
+    const withFutureFlow = calculator.calculate([
+      ...flows,
+      { id: 'future-flow', date: '2026-09-01', type: 'inflow', amount: '5000', interestPayment: false }
+    ], settings, market, '2026-08-20');
+
+    expect(withFutureFlow.returnSeries.timeWeighted.projected?.csh2).toEqual(historical.returnSeries.timeWeighted.projected?.csh2);
+    expect(withFutureFlow.returnSeries.timeWeighted.projected?.overnight).toEqual(historical.returnSeries.timeWeighted.projected?.overnight);
+    expect(withFutureFlow.returnSeries.timeWeighted.projected?.account).toEqual(historical.returnSeries.timeWeighted.projected?.account);
+    expect(withFutureFlow.returnSeries.portfolioValue.projected?.csh2).not.toEqual(historical.returnSeries.portfolioValue.projected?.csh2);
   });
 
   it('reuses observed and scenario-independent projection history for account-rate-only changes', () => {

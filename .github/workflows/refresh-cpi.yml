@@ -1,0 +1,47 @@
+name: Refresh Belgian CPI data
+
+on:
+  schedule:
+    - cron: '30 10 * * 1'
+      timezone: Europe/Brussels
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: market-data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run refresh-cpi
+      - id: commit
+        name: Commit refreshed Belgian CPI data
+        run: |
+          if git diff --quiet -- src/assets/data/cpi.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/assets/data/cpi.json
+          git commit -m 'chore: refresh Belgian CPI data'
+          git push
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+  publish:
+    needs: refresh
+    if: needs.refresh.outputs.changed == 'true'
+    uses: ./.github/workflows/pages.yml

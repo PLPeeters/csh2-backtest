@@ -7,6 +7,6 @@ export default defineConfig({
   test: {
     include: ['src/**/*.browser.test.ts'],
     expect: { poll: { timeout: 2_000 } },
-    browser: { enabled: true, provider: playwright(), instances: [{ browser: 'chromium' }] }
+    browser: { enabled: true, headless: true, provider: playwright(), instances: [{ browser: 'chromium' }] }
   }
 });

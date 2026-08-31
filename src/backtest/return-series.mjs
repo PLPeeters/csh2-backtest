@@ -2,6 +2,7 @@ import { CGT_EXEMPTION_START_YEAR, CGT_RATE, dateAfter, daysBetween, overnightAc
 import { isUsableClose, priceValue } from './quotes.mjs';
 import { runBacktest } from './simulation.mjs';
 import { estimateSingleInvestmentLiquidationValue } from './taxation.mjs';
+import { deflateCumulativeReturnSeries, realGrowthFactorWithProvenance } from './inflation.mjs';
 
 /** Builds the CSH2 net-return chart from each real price date after the first inflow. */
 export function buildBacktestReturnSeries(flows, prices, options) {
@@ -16,11 +17,13 @@ export function buildBacktestReturnSeries(flows, prices, options) {
     if (!result.entries.some((entry) => entry.type === 'inflow' && entry.units > 0)) continue;
     snapshots.push({ date, value: ((result.netLiquidationValue + outflows - inflows) / inflows) * 100 });
   }
-  return snapshots;
+  if (!options?.cpiIndices) return snapshots;
+  const from = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).map((flow) => flow.date).sort()[0];
+  return from ? deflateCumulativeReturnSeries(snapshots, from, options.cpiIndices) : [];
 }
 
 /** Reconstructs the actual account return from external inflows and identified interest payments. */
-export function buildAccountReturnSeries(flows, valuationDate, { accruedBaseInterest = 0 } = {}) {
+export function buildAccountReturnSeries(flows, valuationDate, { accruedBaseInterest = 0, cpiIndices } = {}) {
   const datedFlows = flows
     .filter((flow) => flow.date <= valuationDate)
     .toSorted((left, right) => left.date.localeCompare(right.date));
@@ -42,26 +45,36 @@ export function buildAccountReturnSeries(flows, valuationDate, { accruedBaseInte
   const valuationPoint = { date: valuationDate, value: ((paidInterest + accruedBaseInterest) / inflows) * 100 };
   if (snapshots.at(-1)?.date === valuationDate) snapshots[snapshots.length - 1] = valuationPoint;
   else snapshots.push(valuationPoint);
-  return snapshots;
+  if (!cpiIndices) return snapshots;
+  const from = datedFlows.find((flow) => flow.type === 'inflow' && !flow.interestPayment)?.date;
+  return from ? deflateCumulativeReturnSeries(snapshots, from, cpiIndices) : [];
 }
 
 function priceRatio(from, to) {
   return to.value / from.value;
 }
 
-function trailingAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio) {
+function annualizedReturnPoint(date, nominalFactor, fromDate, toDate, cpiIndices) {
+  const days = daysBetween(fromDate, toDate);
+  const adjusted = cpiIndices ? realGrowthFactorWithProvenance(nominalFactor, fromDate, toDate, cpiIndices) : undefined;
+  const factor = cpiIndices ? adjusted?.value : nominalFactor;
+  if (factor === undefined) return undefined;
+  return { date, value: (factor ** (365 / days) - 1) * 100, ...(adjusted ? { cpiStatus: adjusted.status } : {}) };
+}
+
+function trailingAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio, cpiIndices) {
   let priorIndex = 0;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
     while (priorIndex + 1 < index && daysBetween(points[priorIndex + 1].date, point.date) >= lookbackDays) priorIndex += 1;
     const prior = points[priorIndex];
     if (priorIndex >= index || daysBetween(prior.date, point.date) < lookbackDays) return undefined;
-    const days = daysBetween(prior.date, point.date);
-    return { date: point.date, value: (periodRatio(prior, point) ** (365 / days) - 1) * 100 };
+    const nominalFactor = periodRatio(prior, point);
+    return annualizedReturnPoint(point.date, nominalFactor, prior.date, point.date, cpiIndices);
   }).filter(Boolean);
 }
 
-function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio) {
+function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio, cpiIndices) {
   let futureIndex = 1;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
@@ -69,8 +82,8 @@ function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio =
     while (futureIndex < points.length && daysBetween(point.date, points[futureIndex].date) < lookbackDays) futureIndex += 1;
     const future = points[futureIndex];
     if (!future) return undefined;
-    const days = daysBetween(point.date, future.date);
-    return { date: point.date, value: (periodRatio(point, future) ** (365 / days) - 1) * 100 };
+    const nominalFactor = periodRatio(point, future);
+    return annualizedReturnPoint(point.date, nominalFactor, point.date, future.date, cpiIndices);
   }).filter(Boolean);
 }
 
@@ -114,23 +127,23 @@ export function estimateAnnualizedAfterTaxCsh2Rate(grossAnnualRatePercent, purch
   return (netFactor ** (365 / daysBetween(purchaseDate, saleDate)) - 1) * 100;
 }
 
-export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90, afterTax = false, ...taxOptions } = {}) {
+export function buildTrailingAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 90, afterTax = false, cpiIndices, ...taxOptions } = {}) {
   const points = Object.entries(prices)
     .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
     .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
     .sort((left, right) => left.date.localeCompare(right.date));
-  return trailingAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, taxOptions) : priceRatio);
+  return trailingAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, taxOptions) : priceRatio, cpiIndices);
 }
 
-export function buildForwardAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 365, afterTax = false, ...taxOptions } = {}) {
+export function buildForwardAnnualizedCsh2ReturnSeries(prices, from, to, { lookbackDays = 365, afterTax = false, cpiIndices, ...taxOptions } = {}) {
   const points = Object.entries(prices)
     .filter(([date, record]) => date <= to && !record?.isFallback && isUsableClose(record))
     .map(([date, record]) => ({ date, value: priceValue(record, 'close') }))
     .sort((left, right) => left.date.localeCompare(right.date));
-  return forwardAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, taxOptions) : priceRatio);
+  return forwardAnnualizedReturnSeries(points, from, lookbackDays, afterTax ? csh2AfterTaxRatio(prices, taxOptions) : priceRatio, cpiIndices);
 }
 
-export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 90 } = {}) {
+export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 90, cpiIndices } = {}) {
   let value = 1;
   let previousDate;
   let previousRate;
@@ -143,10 +156,10 @@ export function buildTrailingAnnualizedOvernightBenchmarkReturnSeries(rates, fro
       previousRate = rate;
       return { date, value };
     });
-  return trailingAnnualizedReturnSeries(points, from, lookbackDays);
+  return trailingAnnualizedReturnSeries(points, from, lookbackDays, priceRatio, cpiIndices);
 }
 
-export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 365 } = {}) {
+export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from, to, { lookbackDays = 365, cpiIndices } = {}) {
   let value = 1;
   let previousDate;
   let previousRate;
@@ -159,11 +172,11 @@ export function buildForwardAnnualizedOvernightBenchmarkReturnSeries(rates, from
       previousRate = rate;
       return { date, value };
     });
-  return forwardAnnualizedReturnSeries(points, from, lookbackDays);
+  return forwardAnnualizedReturnSeries(points, from, lookbackDays, priceRatio, cpiIndices);
 }
 
 /** Builds the cumulative €STR return, rebased to zero at the chosen start date. */
-export function buildOvernightTimeWeightedReturnSeries(rates, from, to) {
+export function buildOvernightTimeWeightedReturnSeries(rates, from, to, { cpiIndices } = {}) {
   const points = Object.entries(rates)
     .filter(([date, rate]) => date <= to && Number.isFinite(rate))
     .sort(([left], [right]) => left.localeCompare(right));
@@ -184,7 +197,7 @@ export function buildOvernightTimeWeightedReturnSeries(rates, from, to) {
     value *= overnightAccrualFactor(previousRate, daysBetween(previousDate, to));
     snapshots.push({ date: to, value: (value - 1) * 100 });
   }
-  return snapshots;
+  return cpiIndices ? deflateCumulativeReturnSeries(snapshots, from, cpiIndices) : snapshots;
 }
 
 function benchmarkFlowsWithoutResidualCash(flows, prices, valuationDate, options) {
@@ -243,7 +256,8 @@ export function calculateOvernightBenchmarkPortfolio(flows, prices, rates, valua
 
 /** Mirrors invested CSH2 cash flows while deliberately excluding uninvested whole-share residual cash. */
 export function buildOvernightBenchmarkReturnSeries(flows, prices, rates, valuationDate, from, to, options) {
-  return calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options).snapshots;
+  const snapshots = calculateOvernightBenchmarkPortfolio(flows, prices, rates, valuationDate, from, to, options).snapshots;
+  return options?.cpiIndices ? deflateCumulativeReturnSeries(snapshots, from, options.cpiIndices) : snapshots;
 }
 
 /** Finds when an actual taxed CSH2 backtest first breaks even and catches its overnight benchmark. */

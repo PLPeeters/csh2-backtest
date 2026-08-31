@@ -27,7 +27,8 @@ export const defaultSettings = (): CalculationSettings => ({
   bestSavingsBaseInterestRate: '',
   bestSavingsFidelityPremium: '',
   totalSavingsAmount: '',
-  csh2RateScenario: 'base'
+  csh2RateScenario: 'base',
+  returnMode: 'nominal'
 });
 
 export const blankFlow = (): CashFlowDraft => ({ id: createFlowId(), date: '', type: 'inflow', amount: '', interestPayment: false });
@@ -100,7 +101,8 @@ export function loadStoredState(storage: Storage): StoredState {
     totalSavingsAmount: typeof candidate.totalSavingsAmount === 'string' || typeof candidate.totalSavingsAmount === 'number' ? String(candidate.totalSavingsAmount) : defaults.totalSavingsAmount,
     csh2RateScenario: candidate.csh2RateScenario === 'cautious' || candidate.csh2RateScenario === 'optimistic' || candidate.csh2RateScenario === 'base'
       ? candidate.csh2RateScenario
-      : defaults.csh2RateScenario
+      : defaults.csh2RateScenario,
+    returnMode: candidate.returnMode === 'real' || candidate.returnMode === 'nominal' ? candidate.returnMode : defaults.returnMode
   };
   return { flows, settings };
 }

@@ -4,5 +4,5 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   plugins: [svelte()],
-  build: { outDir: 'dist' }
+  build: { outDir: 'dist', assetsInlineLimit: 0 }
 });

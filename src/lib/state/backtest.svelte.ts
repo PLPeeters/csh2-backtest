@@ -1,4 +1,4 @@
-import type { BenchmarkDirection, BenchmarkHistory, BenchmarkHistoryRequest, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, StatusState } from '../types';
+import type { BenchmarkDirection, BenchmarkHistory, BenchmarkHistoryRequest, BackwardPeriod, CalculationSettings, CalculationView, CashFlowDraft, Csh2RateScenario, FidelityPremiumDraft, ForwardPeriod, MarketDataBundle, ReturnMode, StatusState } from '../types';
 import { blankFidelityPremium, blankFlow, clearStoredState, createFlowId, createPremiumId, defaultSettings, loadStoredState, saveFlows, saveSettings } from '../services/storage';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 
@@ -32,7 +32,8 @@ function calculationInputSignature(flows: CashFlowDraft[], settings: Calculation
       bestSavingsBaseInterestRate: settings.bestSavingsBaseInterestRate,
       bestSavingsFidelityPremium: settings.bestSavingsFidelityPremium
     } : {}),
-    csh2RateScenario: settings.csh2RateScenario
+    csh2RateScenario: settings.csh2RateScenario,
+    returnMode: settings.returnMode
   };
   return JSON.stringify({ flows: flows.map(({ date, type, amount, interestPayment }) => ({ date, type, amount, interestPayment })), settings: calculationSettings });
 }
@@ -94,6 +95,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   let status = $state<StatusState>({ kind: 'idle', message: '' });
   let view = $state<CalculationView>();
   let benchmark = $state<BenchmarkHistory>();
+  let cpiData = $state<MarketDataBundle['cpiData']>();
   let benchmarkStatus = $state<StatusState>({ kind: 'idle', message: '' });
   let direction = $state<BenchmarkDirection>('backward');
   let backwardPeriod = $state<BackwardPeriod>('1y');
@@ -107,6 +109,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
 
   const persist = () => { saveFlows(dependencies.storage, flows); saveSettings(dependencies.storage, settings); };
   const prepareBenchmark = async (market: MarketDataBundle, requestedTo?: string) => {
+    cpiData = market.cpiData;
     const generation = ++benchmarkRequestGeneration;
     benchmarkStatus = { kind: 'loading', message: 'Preparing benchmark history…' };
     try {
@@ -115,6 +118,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
       const totalSavingsAmount = Number(settings.totalSavingsAmount || '10000');
       const history = await dependencies.prepareBenchmark({
         prices: market.data.prices, rates: market.rateData.rates, to, currentRateModel: market.currentRateModel,
+        cpiIndices: market.cpiData.indices, cpiPublicationIdentity: market.cpiData.cachedAt, returnMode: settings.returnMode,
         applyCapitalGainsExemption: settings.applyCapitalGainsExemption,
         ...(Number.isFinite(totalSavingsAmount) && totalSavingsAmount > 0 ? { totalSavingsAmount } : {})
       });
@@ -128,7 +132,7 @@ export function createBacktestController(dependencies: BacktestDependencies) {
   };
   return {
     get flows() { return flows; }, get settings() { return settings; }, get status() { return status; }, get view() { return view; },
-    get benchmark() { return benchmark; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
+    get benchmark() { return benchmark; }, get cpiData() { return cpiData; }, get benchmarkStatus() { return benchmarkStatus; }, get direction() { return direction; },
     get backwardPeriod() { return backwardPeriod; }, get forwardPeriod() { return forwardPeriod; }, get benchmarkAfterTax() { return benchmarkAfterTax; },
     get resultIsStale() { return !!view && submittedInputSignature !== calculationInputSignature(flows, settings); },
     get valid() { const balances = accountBalanceByFlow(flows); return flows.length > 0 && flows.every((flow) => flow.date && Number(flow.amount) > 0) && !Object.values(balances).some((balance) => balance < -0.00000001) && interestSettingsAreValid(settings); },
@@ -263,6 +267,33 @@ export function createBacktestController(dependencies: BacktestDependencies) {
         submittedFlowsSnapshot = cloneFlows(recalculatedFlows);
         submittedInputSignature = calculationInputSignature(recalculatedFlows, recalculatedSettings);
         status = { kind: 'success', message: `Recalculated using the ${nextView.result.valuation.date} close.` };
+      } catch (error) {
+        if (generation !== requestGeneration) return;
+        status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async setReturnMode(returnMode: ReturnMode) {
+      if (settings.returnMode === returnMode) return;
+      settings.returnMode = returnMode;
+      persist();
+      const marketPromise = dependencies.loadMarketData();
+      void (async () => {
+        try { await prepareBenchmark(await marketPromise); }
+        catch (error) { benchmarkStatus = { kind: 'error', message: error instanceof Error ? error.message : 'Benchmark history could not be prepared.' }; }
+      })();
+      if (!view || !submittedFlowsSnapshot) return;
+      const generation = ++requestGeneration;
+      const recalculatedFlows = cloneFlows(submittedFlowsSnapshot);
+      const recalculatedSettings = { ...view.settings, returnMode };
+      status = { kind: 'loading', message: `Updating ${returnMode} returns…` };
+      try {
+        const market = await marketPromise;
+        const nextView = dependencies.calculate(recalculatedFlows, recalculatedSettings, market, dependencies.today());
+        if (generation !== requestGeneration) return;
+        view = nextView;
+        submittedFlowsSnapshot = cloneFlows(recalculatedFlows);
+        submittedInputSignature = calculationInputSignature(recalculatedFlows, recalculatedSettings);
+        status = { kind: 'success', message: `Recalculated ${returnMode} returns using the ${nextView.result.valuation.date} close.` };
       } catch (error) {
         if (generation !== requestGeneration) return;
         status = { kind: 'error', message: error instanceof Error ? error.message : String(error) };

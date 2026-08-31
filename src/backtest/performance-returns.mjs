@@ -1,6 +1,7 @@
 import { isUsableClose } from './quotes.mjs';
-import { daysBetween } from './shared.mjs';
+import { dateAfter, daysBetween, overnightAccrualFactor } from './shared.mjs';
 import { runBacktest } from './simulation.mjs';
+import { deflateCashFlowsToDate, deflateCumulativeReturnSeries, realAnnualizedReturn } from './inflation.mjs';
 
 const CASH_FLOW_EPSILON = 1e-8;
 const MINIMUM_XIRR_RATE = -0.999999;
@@ -62,6 +63,12 @@ export function calculateMoneyWeightedReturn(cashFlows) {
   return uniqueRoots.length === 1 ? uniqueRoots[0] * 100 : undefined;
 }
 
+/** Calculates XIRR after expressing every cash flow in valuation-date purchasing power. */
+export function calculateRealMoneyWeightedReturn(cashFlows, valuationDate, cpiIndices) {
+  const adjusted = deflateCashFlowsToDate(cashFlows, valuationDate, cpiIndices);
+  return adjusted ? calculateMoneyWeightedReturn(adjusted) : undefined;
+}
+
 function csh2TimeWeightedPerformance(flows, prices, valuationDate, options) {
   const portfolioFlows = flows
     .filter((flow) => flow.date <= valuationDate)
@@ -113,7 +120,10 @@ function csh2TimeWeightedPerformance(flows, prices, valuationDate, options) {
 
 /** Builds CSH2 portfolio TWR by geometrically linking returns around every external cash flow. */
 export function buildCsh2TimeWeightedReturnSeries(flows, prices, valuationDate, options = {}) {
-  return csh2TimeWeightedPerformance(flows, prices, valuationDate, options).snapshots;
+  const performance = csh2TimeWeightedPerformance(flows, prices, valuationDate, options);
+  return options.cpiIndices && performance.firstFundedDate
+    ? deflateCumulativeReturnSeries(performance.snapshots, performance.firstFundedDate, options.cpiIndices)
+    : performance.snapshots;
 }
 
 /** Calculates annualized CSH2 portfolio TWR from geometrically linked sub-period returns. */
@@ -122,7 +132,9 @@ export function calculateCsh2TimeWeightedReturn(flows, prices, valuationDate, op
   if (!Number.isFinite(performance.factor) || performance.factor < 0 || !performance.firstFundedDate || !performance.valuationDate) return undefined;
   const days = daysBetween(performance.firstFundedDate, performance.valuationDate);
   if (days <= 0) return undefined;
-  return (performance.factor ** (365 / days) - 1) * 100;
+  return options.cpiIndices
+    ? realAnnualizedReturn(performance.factor, performance.firstFundedDate, performance.valuationDate, options.cpiIndices)
+    : (performance.factor ** (365 / days) - 1) * 100;
 }
 
 function accountTimeWeightedPerformance(flows, valuationDate, accruedBaseInterest) {
@@ -165,15 +177,111 @@ function accountTimeWeightedPerformance(flows, valuationDate, accruedBaseInteres
 }
 
 /** Builds account TWR from credited and accrued interest, neutralizing external cash flows. */
-export function buildAccountTimeWeightedReturnSeries(flows, valuationDate, { accruedBaseInterest = 0 } = {}) {
-  return accountTimeWeightedPerformance(flows, valuationDate, accruedBaseInterest).snapshots;
+export function buildAccountTimeWeightedReturnSeries(flows, valuationDate, options = {}) {
+  const { accruedBaseInterest = 0 } = options;
+  const performance = accountTimeWeightedPerformance(flows, valuationDate, accruedBaseInterest);
+  return options.cpiIndices && performance.firstFundedDate
+    ? deflateCumulativeReturnSeries(performance.snapshots, performance.firstFundedDate, options.cpiIndices)
+    : performance.snapshots;
 }
 
 /** Calculates annualized account TWR from credited and accrued interest. */
-export function calculateAccountTimeWeightedReturn(flows, valuationDate, { accruedBaseInterest = 0 } = {}) {
+export function calculateAccountTimeWeightedReturn(flows, valuationDate, options = {}) {
+  const { accruedBaseInterest = 0 } = options;
   const performance = accountTimeWeightedPerformance(flows, valuationDate, accruedBaseInterest);
   if (!Number.isFinite(performance.factor) || performance.factor < 0 || !performance.firstFundedDate) return undefined;
   const days = daysBetween(performance.firstFundedDate, valuationDate);
   if (days <= 0) return undefined;
-  return (performance.factor ** (365 / days) - 1) * 100;
+  return options.cpiIndices
+    ? realAnnualizedReturn(performance.factor, performance.firstFundedDate, valuationDate, options.cpiIndices)
+    : (performance.factor ** (365 / days) - 1) * 100;
+}
+
+function latestRateAtOrBefore(rates, date) {
+  return Object.entries(rates ?? {})
+    .filter(([rateDate, rate]) => rateDate <= date && Number.isFinite(rate))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .at(-1)?.[1];
+}
+
+function latestPointAtOrBefore(points, date) {
+  return points.filter((point) => point.date <= date).toSorted((left, right) => left.date.localeCompare(right.date)).at(-1);
+}
+
+function projectedBalance(point, inflows, outflows) {
+  return inflows * (1 + point.value / 100) - outflows;
+}
+
+/**
+ * Extends observed cash-flow-neutral returns through a value projection.
+ * The market and account projections are balances expressed as cumulative
+ * return points, so each is converted to a balance ratio and seeded from its
+ * corresponding observed TWR endpoint. €STR is compounded independently from
+ * the latest known rate because its observed series has no portfolio flows.
+ */
+export function buildTimeWeightedReturnProjection(observed, projection, rates, valuationDate, {
+  externalInflows,
+  outflows,
+  cpiIndices
+} = {}) {
+  if (!projection || !Number.isFinite(projection.csh2AnnualRatePercent) || !Number.isFinite(externalInflows) || externalInflows <= 0 || !Number.isFinite(outflows) || !valuationDate) return undefined;
+  const throughDate = projection.throughDate;
+  const validDate = (date) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00Z`));
+  if (!validDate(valuationDate) || !validDate(throughDate) || throughDate <= valuationDate || !Array.isArray(projection.csh2) || !projection.csh2.length || !Array.isArray(projection.account) || !projection.account.length) return undefined;
+  const observedCsh2 = latestPointAtOrBefore(observed?.csh2 ?? [], valuationDate);
+  const observedOvernight = latestPointAtOrBefore(observed?.overnight ?? [], valuationDate);
+  const observedAccount = latestPointAtOrBefore(observed?.account ?? [], valuationDate);
+  if (!observedCsh2 || !observedOvernight || !observedAccount) return undefined;
+
+  const projectBalanceSeries = (observedPoint, projectedPoints) => {
+    const points = projectedPoints
+      .filter((point) => validDate(point?.date) && point.date >= valuationDate && point.date <= throughDate && Number.isFinite(point.value))
+      .toSorted((left, right) => left.date.localeCompare(right.date));
+    if (points[0]?.date !== valuationDate) return [];
+    const observedFactor = 1 + observedPoint.value / 100;
+    const valuationBalance = projectedBalance(points[0], externalInflows, outflows);
+    if (!Number.isFinite(observedFactor) || observedFactor < 0 || !Number.isFinite(valuationBalance) || valuationBalance <= CASH_FLOW_EPSILON) return [];
+    return points.map((point) => {
+      const balance = projectedBalance(point, externalInflows, outflows);
+      if (!Number.isFinite(balance) || balance <= CASH_FLOW_EPSILON) return undefined;
+      return { date: point.date, value: (observedFactor * balance / valuationBalance - 1) * 100 };
+    }).filter(Boolean);
+  };
+
+  const csh2 = projectBalanceSeries(observedCsh2, projection.csh2 ?? []);
+  const account = projectBalanceSeries(observedAccount, projection.account ?? []);
+  if (!csh2.length || !account.length || csh2.at(-1).date !== throughDate || account.at(-1).date !== throughDate) return undefined;
+  const rate = latestRateAtOrBefore(rates, valuationDate);
+  if (!Number.isFinite(rate) || overnightAccrualFactor(rate, 1) <= 0) return undefined;
+  const overnightFactor = 1 + observedOvernight.value / 100;
+  if (!Number.isFinite(overnightFactor) || overnightFactor < 0) return undefined;
+  const overnight = [{ date: valuationDate, value: (overnightFactor - 1) * 100 }];
+  let factor = overnightFactor;
+  for (let day = 1; day <= daysBetween(valuationDate, throughDate); day += 1) {
+    factor *= overnightAccrualFactor(rate, 1);
+    overnight.push({ date: dateAfter(valuationDate, day), value: (factor - 1) * 100 });
+  }
+  const nominal = {
+    csh2,
+    overnight,
+    account,
+    throughDate,
+    csh2AnnualRatePercent: projection.csh2AnnualRatePercent,
+    overnightRatePercent: rate,
+    ...(Number.isFinite(projection.baseAnnualRatePercent) ? { baseAnnualRatePercent: projection.baseAnnualRatePercent } : {})
+  };
+  if (!cpiIndices) return nominal;
+  const deflate = (history, points) => {
+    const historical = history.filter((point) => point.date <= valuationDate).toSorted((left, right) => left.date.localeCompare(right.date));
+    const from = historical[0]?.date;
+    if (!from) return [];
+    const continuation = [...historical, ...points.filter((point) => point.date > valuationDate)];
+    return deflateCumulativeReturnSeries(continuation, from, cpiIndices).filter((point) => point.date >= valuationDate);
+  };
+  return {
+    ...nominal,
+    csh2: deflate(observed?.csh2 ?? [], csh2),
+    overnight: deflate(observed?.overnight ?? [], overnight),
+    account: deflate(observed?.account ?? [], account)
+  };
 }

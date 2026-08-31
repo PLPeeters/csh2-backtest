@@ -4,6 +4,7 @@ export type BackwardPeriod = '1m' | '3m' | '6m' | '1y' | '2y' | '5y';
 export type ForwardPeriod = '1m' | '3m' | '6m' | '1y';
 export type BenchmarkPeriod = BackwardPeriod | ForwardPeriod;
 export type Csh2RateScenario = 'cautious' | 'base' | 'optimistic';
+export type ReturnMode = 'nominal' | 'real';
 
 export interface CashFlowDraft { id: string; date: string; type: CashFlowType; amount: string; interestPayment: boolean }
 export interface FidelityPremiumDraft { id: string; baseAmount: string; earnedDate: string; finalPayoutAmount: string }
@@ -20,12 +21,18 @@ export interface CalculationSettings {
   bestSavingsFidelityPremium: string;
   totalSavingsAmount: string;
   csh2RateScenario: Csh2RateScenario;
+  returnMode: ReturnMode;
 }
 export interface PriceRecord { open?: number; close: number; isFallback?: boolean; fallbackSource?: string }
 export interface PriceEnvelope { source?: string; cachedAt: string; prices: Record<string, PriceRecord | number> }
 export interface RateEnvelope { source?: string; cachedAt?: string; rates: Record<string, number> }
-export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; currentRateModel?: CurrentRateModelPublication; version: string }
-export interface ChartPoint { date: string; value: number }
+export interface CpiEnvelope {
+  source: string; dataSourceId: string; backfillViewId: string; currentViewId: string; license: string;
+  adaptations: string; cachedAt: string; base: string; indices: Record<string, number>;
+}
+export interface MarketDataBundle { data: PriceEnvelope; rateData: RateEnvelope; cpiData: CpiEnvelope; currentRateModel?: CurrentRateModelPublication; version: string }
+export type CpiPointStatus = 'observed' | 'interpolated' | 'extrapolated' | 'projected';
+export interface ChartPoint { date: string; value: number; cpiStatus?: CpiPointStatus }
 export interface BenchmarkSeries { csh2: ChartPoint[]; overnight: ChartPoint[] }
 export interface ReturnProjection {
   csh2: ChartPoint[]; overnight: ChartPoint[]; account: ChartPoint[]; throughDate: string;
@@ -36,7 +43,7 @@ export interface ComparisonSeries extends BenchmarkSeries {
   projected?: ReturnProjection;
 }
 export interface BacktestSeries extends ComparisonSeries {
-  timeWeighted: BenchmarkSeries & { account: ChartPoint[] };
+  timeWeighted: ComparisonSeries;
   portfolioValue: ComparisonSeries;
 }
 export interface BenchmarkHistorySeries {
@@ -76,6 +83,7 @@ export interface BenchmarkHistory {
 }
 export interface BenchmarkHistoryRequest {
   prices: PriceEnvelope['prices']; rates: RateEnvelope['rates']; to: string; currentRateModel?: CurrentRateModelPublication;
+  cpiIndices: CpiEnvelope['indices']; cpiPublicationIdentity: string; returnMode: ReturnMode;
   applyCapitalGainsExemption?: boolean; totalSavingsAmount?: number;
 }
 export interface LedgerEntry {
@@ -102,7 +110,7 @@ export interface BacktestResult {
   fidelityPremiumAssessments: FidelityPremiumAssessment[];
 }
 export interface CalculationView {
-  result: BacktestResult; metadata: PriceEnvelope; rateMetadata: RateEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;
+  result: BacktestResult; metadata: PriceEnvelope; rateMetadata: RateEnvelope; cpiMetadata: CpiEnvelope; settings: CalculationSettings; returnSeries: BacktestSeries; from: string; to: string;
 }
 export type StatusState = { kind: 'idle' | 'loading' | 'success' | 'error'; message: string };
 export interface StoredState { flows: CashFlowDraft[]; settings: CalculationSettings }

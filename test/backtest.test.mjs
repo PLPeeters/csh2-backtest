@@ -1,9 +1,98 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildReturnProjection, buildTimeWeightedReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, latestAnnualInflation, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, realAnnualizedReturn, realAnnualRate, realGrowthFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
+
+test('uses observed mid-month anchors and geometric interpolation without backward extrapolation', () => {
+  const indices = { '2025-04': 100, '2025-05': 121 };
+  assert.deepEqual(cpiPointForDate(indices, '2025-04-15'), { value: 100, status: 'observed', lowerMonth: '2025-04', upperMonth: '2025-04' });
+  const midpoint = cpiPointForDate(indices, '2025-04-30');
+  assert.equal(midpoint.status, 'interpolated');
+  assert.ok(Math.abs(midpoint.value - 110) < 1e-12);
+  assert.equal(cpiIndexForDate(indices, '2025-04-14'), undefined);
+});
+
+test('uses exact Fisher real-return conversion for inflation, zero inflation, and deflation', () => {
+  assert.ok(Math.abs(realGrowthFactor(1.1, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 105 }) - 1.1 / 1.05) < 1e-12);
+  assert.equal(realGrowthFactor(1.1, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 100 }), 1.1);
+  assert.ok(realGrowthFactor(1, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 95 }) > 1);
+  assert.ok(Math.abs(realAnnualRate(10, 5) - ((1.1 / 1.05 - 1) * 100)) < 1e-12);
+});
+
+test('inflation-adjusts before annualizing a sub-year return', () => {
+  const value = realAnnualizedReturn(1.05, '2025-01-15', '2025-07-15', { '2025-01': 100, '2025-07': 102 });
+  const expected = ((1.05 / 1.02) ** (365 / 181) - 1) * 100;
+  assert.ok(Math.abs(value - expected) < 1e-12);
+});
+
+test('uses a published recent month for annual inflation but requires its exact prior-year month', () => {
+  const indices = { '2024-07': 100, '2025-07': 105 };
+  assert.ok(Math.abs(latestAnnualInflation(indices, '2025-08-20') - 5) < 1e-12);
+  assert.equal(latestAnnualInflation({ '2024-06': 100, '2025-07': 105 }, '2025-08-20'), undefined);
+});
+
+test('deflates all money-weighted cash flows without mutating input', () => {
+  const cashFlows = [
+    { date: '2025-01-15', amount: -100 },
+    { date: '2025-07-15', amount: -100 },
+    { date: '2026-01-15', amount: 220 }
+  ];
+  const original = structuredClone(cashFlows);
+  const indices = { '2025-01': 100, '2025-07': 102, '2026-01': 105 };
+  const adjusted = deflateCashFlowsToDate(cashFlows, '2026-01-15', indices);
+  assert.deepEqual(cashFlows, original);
+  assert.deepEqual(adjusted, [
+    { date: '2025-01-15', amount: -105 },
+    { date: '2025-07-15', amount: -100 * 105 / 102 },
+    { date: '2026-01-15', amount: 220 }
+  ]);
+  assert.ok(Math.abs(calculateRealMoneyWeightedReturn(cashFlows, '2026-01-15', indices) - calculateMoneyWeightedReturn(adjusted)) < 1e-12);
+});
+
+test('real annualized builders use exact backward and forward interval endpoints', () => {
+  const cpiIndices = { '2025-01': 100, '2026-01': 105 };
+  const annualPrices = { '2025-01-15': 100, '2026-01-15': 110 };
+  const expected = (1.1 / 1.05 - 1) * 100;
+  const backward = buildTrailingAnnualizedCsh2ReturnSeries(annualPrices, '2026-01-15', '2026-01-15', { lookbackDays: 365, cpiIndices });
+  const forward = buildForwardAnnualizedCsh2ReturnSeries(annualPrices, '2025-01-15', '2026-01-15', { lookbackDays: 365, cpiIndices });
+  assert.ok(Math.abs(backward[0].value - expected) < 1e-10);
+  assert.ok(Math.abs(forward[0].value - expected) < 1e-10);
+  assert.equal(backward[0].cpiStatus, 'observed');
+});
+
+test('interpolation is continuous across month boundaries', () => {
+  const indices = { '2025-01': 100, '2025-02': 102 };
+  const before = cpiIndexForDate(indices, '2025-01-31');
+  const after = cpiIndexForDate(indices, '2025-02-01');
+  assert.ok(after > before);
+  assert.ok(after / before < 1.001);
+});
+
+test('real returns are invariant when every CPI value is rebased by one constant', () => {
+  const original = realGrowthFactor(1.2, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 105 });
+  const rebased = realGrowthFactor(1.2, '2025-01-15', '2026-01-15', { '2025-01': 135.3, '2026-01': 142.065 });
+  assert.ok(Math.abs(original - rebased) < 1e-12);
+});
+
+test('uses trailing-12-month extrapolation and replaces it with interpolation after publication', () => {
+  const beforePublication = { '2025-08': 100, '2026-08': 104 };
+  const provisional = cpiPointForDate(beforePublication, '2026-08-25');
+  assert.equal(provisional.status, 'extrapolated');
+  const afterPublication = cpiPointForDate({ ...beforePublication, '2026-09': 105 }, '2026-08-25');
+  assert.equal(afterPublication.status, 'interpolated');
+  assert.equal(afterPublication.lowerMonth, '2026-08');
+  assert.equal(afterPublication.upperMonth, '2026-09');
+});
+
+test('projection mode requires an explicit rate and marks projected provenance', () => {
+  const indices = { '2025-08': 100, '2026-08': 104 };
+  assert.equal(cpiPointForDate(indices, '2026-09-15', { mode: 'projection' }), undefined);
+  const projected = cpiPointForDate(indices, '2026-09-15', { mode: 'projection', projectionAnnualRate: 3 });
+  assert.equal(projected.status, 'projected');
+  assert.ok(projected.value > 104);
+});
 
 function assertCurrentRateModelNumbersAreRounded(value) {
   if (typeof value === 'number') {
@@ -366,6 +455,75 @@ test('projects all cumulative-return series through multiple fidelity premiums',
   ]);
   assert.equal(projection.overnightRatePercent, 3);
   assert.equal(projection.csh2AnnualRatePercent, 8);
+});
+
+test('extends each observed TWR endpoint continuously through the value projection', () => {
+  const projection = buildTimeWeightedReturnProjection({
+    csh2: [{ date: '2026-01-01', value: 0 }, { date: '2026-03-02', value: 10 }],
+    overnight: [{ date: '2026-01-01', value: 0 }, { date: '2026-03-02', value: 5 }],
+    account: [{ date: '2026-01-01', value: 0 }, { date: '2026-03-02', value: 2 }]
+  }, {
+    csh2: [{ date: '2026-03-02', value: 20 }, { date: '2026-03-03', value: 21 }],
+    overnight: [],
+    account: [{ date: '2026-03-02', value: 10 }, { date: '2026-03-03', value: 11 }],
+    throughDate: '2026-03-03',
+    csh2AnnualRatePercent: 8,
+    overnightRatePercent: 3,
+    baseAnnualRatePercent: 2
+  }, { '2026-03-02': 3 }, '2026-03-02', { externalInflows: 100, outflows: 20 });
+
+  assert.ok(projection);
+  assert.equal(projection.csh2[0].date, '2026-03-02');
+  assert.equal(projection.account[0].date, '2026-03-02');
+  assert.equal(projection.overnight[0].date, '2026-03-02');
+  assert.ok(Math.abs(projection.csh2[0].value - 10) < 1e-12);
+  assert.ok(Math.abs(projection.account[0].value - 2) < 1e-12);
+  assert.ok(Math.abs(projection.overnight[0].value - 5) < 1e-12);
+  assert.ok(projection.csh2.at(-1).value > projection.csh2[0].value);
+  assert.ok(projection.account.at(-1).value > projection.account[0].value);
+  assert.ok(projection.overnight.at(-1).value > projection.overnight[0].value);
+});
+
+test('does not build a TWR projection from an empty or incomplete horizon', () => {
+  const observed = {
+    csh2: [{ date: '2026-03-02', value: 10 }],
+    overnight: [{ date: '2026-03-02', value: 5 }],
+    account: [{ date: '2026-03-02', value: 2 }]
+  };
+  const invalid = { throughDate: '2026-03-03', csh2AnnualRatePercent: 8, csh2: [], account: [] };
+  assert.equal(buildTimeWeightedReturnProjection(observed, invalid, { '2026-03-02': 3 }, '2026-03-02', { externalInflows: 100, outflows: 0 }), undefined);
+  assert.equal(buildTimeWeightedReturnProjection(observed, {
+    ...invalid,
+    csh2: [{ date: '2026-03-02', value: 20 }],
+    account: [{ date: '2026-03-02', value: 10 }]
+  }, { '2026-03-02': 3 }, '2026-03-02', { externalInflows: 100, outflows: 0 }), undefined);
+});
+
+test('deflates projected TWR points with provisional CPI extrapolation in real mode', () => {
+  const projection = buildTimeWeightedReturnProjection({
+    csh2: [{ date: '2026-02-01', value: 0 }, { date: '2026-03-02', value: 10 }],
+    overnight: [{ date: '2026-02-01', value: 0 }, { date: '2026-03-02', value: 5 }],
+    account: [{ date: '2026-02-01', value: 0 }, { date: '2026-03-02', value: 2 }]
+  }, {
+    csh2: [{ date: '2026-03-02', value: 10 }, { date: '2026-04-02', value: 20 }],
+    overnight: [],
+    account: [{ date: '2026-03-02', value: 2 }, { date: '2026-04-02', value: 12 }],
+    throughDate: '2026-04-02',
+    csh2AnnualRatePercent: 8,
+    overnightRatePercent: 3,
+    baseAnnualRatePercent: 2
+  }, { '2026-03-02': 3 }, '2026-03-02', {
+    externalInflows: 100,
+    outflows: 0,
+    cpiIndices: { '2025-03': 100, '2026-02': 102, '2026-03': 104 }
+  });
+
+  assert.ok(projection);
+  const cpiIndices = { '2025-03': 100, '2026-02': 102, '2026-03': 104 };
+  const expectedRealFactor = 1.1 / (cpiIndexForDate(cpiIndices, '2026-03-02') / cpiIndexForDate(cpiIndices, '2026-02-01'));
+  assert.ok(Math.abs(projection.csh2[0].value - (expectedRealFactor - 1) * 100) < 1e-12);
+  assert.equal(projection.csh2[0].cpiStatus, 'interpolated');
+  assert.equal(projection.csh2.at(-1).cpiStatus, 'extrapolated');
 });
 
 test('keeps accrued base interest and adds future fidelity payouts separately', () => {

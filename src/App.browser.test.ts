@@ -56,7 +56,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(currentRates.getByText(/Current €STR/)).toBeVisible();
     await expect.element(currentRates.getByText(/Estimated CSH2 .*±.* pp/)).toBeVisible();
     await expect.element(currentRates.getByText('Post-tax estimated CSH2 rate', { exact: false })).toBeVisible();
-    await expect.element(currentRates.getByText(/Estimated CSH2 \(/)).toHaveLength(0);
+    expect(currentRates.element().textContent).not.toContain('(nominal)');
     await expect.element(currentRates.getByText(/Base .* pp/)).toHaveLength(0);
     await page.getByRole('button', { name: 'How estimated CSH2 is calculated' }).click();
     const methodology = page.getByRole('dialog', { name: 'How we estimate today’s CSH2 return' });
@@ -101,6 +101,8 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText(/0,5% base rate and 0% fidelity premium/)).toBeVisible();
     await fidelityPremium.fill('2');
     await expect.element(page.getByText(/0,5% base rate and 2% fidelity premium/)).toBeVisible();
+    await expect.element(currentRates.getByText(/Best savings account/)).toBeVisible();
+    expect(currentRates.element().textContent).not.toMatch(/\((?:real|nominal)\)/);
     await expect.element(page.getByRole('img', { name: /Net CSH2 advantage compared with the best available savings account in percent/ })).toBeVisible();
     await expect.element(page.getByRole('group', { name: 'Compare net CSH2 with' })).toHaveLength(0);
     await expect.element(page.getByText(/^CSH2 matches €STR after/)).toHaveLength(0);
@@ -190,6 +192,26 @@ describe('CSH2 application inputs', () => {
     await expect.element(interest).toBeDisabled();
   });
 
+  it('keeps benchmark controls at their intrinsic width for nominal and real headings', async () => {
+    await page.viewport(1280, 720);
+    try {
+      render(App);
+      const headingLocator = page.getByRole('heading', { name: 'Backward annualized returns · 1Y' });
+      await expect.element(headingLocator).toBeVisible();
+
+      const benchmarkPanel = headingLocator.element().closest('.benchmark-chart-panel')!;
+      const nominalControl = benchmarkPanel.querySelector<HTMLElement>('.benchmark-control')!;
+      const nominalWidth = nominalControl.getBoundingClientRect().width;
+      await page.getByRole('group', { name: 'Global return presentation' }).getByRole('button', { name: 'Real' }).click();
+      const realHeadingLocator = page.getByRole('heading', { name: 'Backward annualized returns · 1Y' });
+      await expect.element(realHeadingLocator).toBeVisible();
+      const realControl = realHeadingLocator.element().closest('.benchmark-chart-panel')!.querySelector<HTMLElement>('.benchmark-control')!;
+      expect(Math.abs(nominalWidth - realControl.getBoundingClientRect().width)).toBeLessThan(1);
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
   it('accepts accrued base interest and any number of complete fidelity premium entries', async () => {
     render(App);
     await page.getByLabelText('Date').fill('2026-01-02');
@@ -266,12 +288,21 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Load example' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+    const renderedText = () => document.body.textContent?.replace(/\s+/g, ' ') ?? '';
+    const projectionExplanation = page.getByText(/extends each observed TWR endpoint with no further cash flows/);
+    await expect.element(projectionExplanation).toBeVisible();
+    expect(renderedText()).toMatch(/extends each observed TWR endpoint .*%, and the entered account base rate .*%; future fidelity premiums/);
+    const projectionRawText = projectionExplanation.element().textContent?.replace(/[\r\n\t]+/g, ' ') ?? '';
+    expect(projectionRawText).toMatch(/%, and the entered account base rate/);
+    expect(projectionRawText).not.toMatch(/and {2,}the entered account base rate/);
+    expect(renderedText()).not.toMatch(/return\.These|andthe|returns\.This/);
     await expect.element(page.getByText('CSH2 backtest first broke even after')).toBeVisible();
     await expect.element(page.getByText('CSH2 backtest first matched €STR after')).toBeVisible();
     const updatedTimes = page.getByText(/ago$/, { exact: true });
-    await expect.element(updatedTimes).toHaveLength(2);
+    await expect.element(updatedTimes).toHaveLength(3);
     await expect.element(updatedTimes.nth(0)).toHaveTextContent(/ago$/);
     await expect.element(updatedTimes.nth(1)).toHaveTextContent(/ago$/);
+    await expect.element(updatedTimes.nth(2)).toHaveTextContent(/ago$/);
     await expect.element(page.getByText('€STR rate last updated')).toBeVisible();
     await expect.element(page.getByText('(source: ECB statistics)')).toBeVisible();
     await expect.element(page.getByRole('tooltip')).toHaveLength(0);
@@ -291,6 +322,92 @@ describe('CSH2 application inputs', () => {
     await expect.element(taxTreatment.getByRole('button', { name: 'Gross' })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('button', { name: 'Forward' }).click();
     await expect.element(page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('persists the global real-return mode, updates return labels, and preserves nominal euro values', async () => {
+    localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ applyReyndersTax: false }));
+    render(App);
+    await expect.element(page.getByText('Global assumptions', { exact: true })).toHaveLength(0);
+    await expect.element(page.getByText('CSH2 gain tax and rate scenario', { exact: true })).toHaveLength(0);
+    await expect.element(page.getByText('Gain tax regime', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('Rate scenario', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('Returns', { exact: true })).toBeVisible();
+    const assumptions = page.getByRole('complementary', { name: 'Global assumptions' }).element();
+    const assumptionStyles = (element: Element) => assumptions.ownerDocument.defaultView!.getComputedStyle(element);
+    const assumptionButtons = [...assumptions.querySelectorAll<HTMLButtonElement>('.global-assumption-picker button')];
+    expect(assumptionButtons).toHaveLength(8);
+    expect(new Set(assumptionButtons.map((button) => assumptionStyles(button).fontSize))).toEqual(new Set(['12.8px']));
+    expect(new Set(assumptionButtons.map((button) => assumptionStyles(button).fontWeight))).toEqual(new Set(['700']));
+    const mode = page.getByRole('group', { name: 'Global return presentation' });
+    await expect.element(mode.getByRole('button', { name: 'Nominal' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(page.getByRole('link', { name: 'Source Statbel' })).toHaveAttribute('href', 'https://bestat.statbel.fgov.be/bestat/api/views/86586e27-90ac-47c6-87ce-64b63194e605');
+    await expect.element(page.getByRole('link', { name: 'CC BY 4.0' })).toHaveAttribute('href', 'https://statbel.fgov.be/en/cc-40');
+    await expect.element(page.getByText(/adapted by selecting the all-items series, deduplicating, rebasing, and normalizing monthly observations/)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Load example' }).click();
+    await page.getByRole('button', { name: 'Calculate with latest data' }).click();
+    const currentRates = page.getByLabelText('Current rates used');
+    await expect.element(currentRates).toBeVisible();
+    const performancePicker = page.getByRole('group', { name: 'Performance chart view' }).element();
+    const directionPicker = page.getByRole('group', { name: 'Return direction' }).element();
+    const pickerStyles = (element: Element) => {
+      const styles = assumptionStyles(element);
+      return { borderRadius: styles.borderRadius, borderColor: styles.borderColor, overflowX: styles.overflowX };
+    };
+    const buttonStyles = (element: Element) => {
+      const styles = assumptionStyles(element);
+      return { minHeight: styles.minHeight, borderRadius: styles.borderRadius, fontSize: styles.fontSize, fontWeight: styles.fontWeight, paddingTop: styles.paddingTop, paddingRight: styles.paddingRight, paddingBottom: styles.paddingBottom, paddingLeft: styles.paddingLeft, backgroundColor: styles.backgroundColor, color: styles.color };
+    };
+    expect(pickerStyles(performancePicker)).toEqual(pickerStyles(directionPicker));
+    expect(buttonStyles(performancePicker.querySelectorAll('button')[0])).toEqual(buttonStyles(directionPicker.querySelectorAll('button')[1]));
+    expect(buttonStyles(performancePicker.querySelectorAll('button')[1])).toEqual(buttonStyles(directionPicker.querySelectorAll('button')[0]));
+    const netValueArticle = page.getByText('Net value if sold today').element().closest('article')!;
+    const nominalEuroValue = netValueArticle.querySelector('strong')!.textContent;
+    await mode.getByRole('button', { name: 'Real' }).click();
+
+    await expect.element(mode.getByRole('button', { name: 'Real' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(currentRates).toBeVisible();
+    const realCurrentRates = currentRates.element();
+    const realEstimatedCsh2 = [...realCurrentRates.querySelectorAll('.estimated-rate')].find((summary) => summary.textContent?.startsWith('Estimated CSH2'))!;
+    expect(realEstimatedCsh2.textContent).toMatch(/Estimated CSH2 .*±.* pp/);
+    await expect.element(page.getByRole('heading', { name: 'Backward annualized returns · 1Y' })).toBeVisible();
+    await expect.element(page.getByText('CSH2 annualized money-weighted return')).toBeVisible();
+    await expect.element(page.getByText(/annualized money-weighted return difference/)).toBeVisible();
+    await expect.element(page.getByLabelText('Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows')).toBeVisible();
+    expect(netValueArticle.querySelector('strong')!.textContent).toBe(nominalEuroValue);
+    expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"returnMode":"real"');
+
+    await page.getByRole('button', { name: 'Portfolio value' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Euro portfolio value over time' })).toBeVisible();
+    await expect.element(page.getByLabelText('Portfolio value in euro for CSH2 and your account using the same external cash flows')).toBeVisible();
+  });
+
+  it('explains unavailable full-period real metrics before CPI coverage', async () => {
+    localStorage.setItem('csh2-belgium-flows-v1', JSON.stringify([{ date: '2015-04-01', type: 'inflow', amount: '5000', interestPayment: false }]));
+    localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ returnMode: 'real' }));
+    render(App);
+
+    await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toBeVisible();
+    const metric = page.getByText('CSH2 annualized money-weighted return').element().closest('article')!;
+    expect(metric.querySelector('strong')!.textContent).toBe('—');
+  });
+
+  it('keeps the global return control and Statbel notice within a narrow viewport', async () => {
+    await page.viewport(390, 844);
+    try {
+      render(App);
+      const assumptions = page.getByRole('complementary', { name: 'Global assumptions' }).element();
+      const mode = page.getByRole('group', { name: 'Global return presentation' }).element();
+      const notice = page.getByText(/Belgian CPI:/).element();
+      expect(assumptions.getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+      expect(assumptions.getBoundingClientRect().right).toBeLessThanOrEqual(390);
+      expect(mode.getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+      expect(mode.getBoundingClientRect().right).toBeLessThanOrEqual(390);
+      expect(notice.scrollWidth).toBeLessThanOrEqual(notice.clientWidth);
+      await expect.element(page.getByRole('link', { name: 'Source Statbel' })).toBeVisible();
+    } finally {
+      await page.viewport(1280, 720);
+    }
   });
 
   it('marks edited results as stale and refreshes the chart for calculation settings', async () => {
@@ -360,7 +477,7 @@ describe('CSH2 application inputs', () => {
     const controller = createBacktestController({
       storage: localStorage,
       today: () => '2026-08-10',
-      loadMarketData: async () => ({ data: { cachedAt: '2026-08-10T00:00:00Z', prices: {} }, rateData: { rates: { '2026-08-08': 2.187, '2026-08-11': 2.19 } }, version: 'test' }),
+      loadMarketData: async () => ({ data: { cachedAt: '2026-08-10T00:00:00Z', prices: {} }, rateData: { rates: { '2026-08-08': 2.187, '2026-08-11': 2.19 } }, cpiData: { source: 'Statbel', dataSourceId: 'test', backfillViewId: 'test', currentViewId: 'test', license: 'test', adaptations: 'test', cachedAt: '2026-08-10T00:00:00Z', base: 'test', indices: {} }, version: 'test' }),
       calculate: () => ({}) as CalculationView,
       prepareBenchmark: async () => ({}) as never
     });

@@ -4,6 +4,7 @@
   import { date, duration, euro, number, percent, relativeUpdatedAt, updatedAt } from '../services/formatters';
   import { nextYearComparisonValues } from '../services/fidelity-timing.mjs';
   import LineChart from './LineChart.svelte';
+  import { cpiPointForDate } from '../../backtest.mjs';
   let { controller }: { controller: BacktestController } = $props();
   let returnChartMode = $state<'portfolio-value' | 'time-weighted'>('time-weighted');
 
@@ -33,6 +34,10 @@
   {@const returnDifference = result.csh2MoneyWeightedReturn !== undefined && result.accountMoneyWeightedReturn !== undefined ? result.csh2MoneyWeightedReturn - result.accountMoneyWeightedReturn : undefined}
   {@const csh2UpdatedAt = new Date(controller.view.metadata.cachedAt)}
   {@const estrUpdatedAt = controller.view.rateMetadata.cachedAt ? new Date(controller.view.rateMetadata.cachedAt) : undefined}
+  {@const cpiUpdatedAt = new Date(controller.view.cpiMetadata.cachedAt)}
+  {@const returnMode = settings.returnMode}
+  {@const valuationCpi = cpiPointForDate(controller.view.cpiMetadata.indices, controller.view.to)}
+  {@const latestCpiMonth = Object.keys(controller.view.cpiMetadata.indices).sort().at(-1)}
     <div class="result-heading">
       <div>
         <p class="eyebrow">As of {result.valuation.date}</p>
@@ -49,8 +54,20 @@
         {:else}
           €STR rate last update unavailable (source: ECB statistics)
         {/if}
+        <br />
+        Belgian CPI last updated
+        <time class="timestamp" datetime={controller.view.cpiMetadata.cachedAt} title={updatedAt.format(cpiUpdatedAt)} data-tooltip={updatedAt.format(cpiUpdatedAt)}>{relativeUpdatedAt(cpiUpdatedAt)}</time>
+        (latest observed month: {latestCpiMonth}; source: Statbel)
       </p>
     </div>
+    {#if returnMode === 'real'}
+      <p class="real-coverage-note">
+        Inflation-adjusted returns use Belgian CPI. A metric is shown as — when its full measurement interval begins before CPI coverage in January 2016; historical charts show only fully covered intervals.
+        {#if valuationCpi?.status === 'extrapolated'}
+          &#32;The latest portion is provisional and extrapolated from trailing 12-month observed inflation after {valuationCpi.lowerMonth}.
+        {/if}
+      </p>
+    {/if}
     <div class="metrics">
       <div class="metric-row metric-row-values outcome-returns"><article class="metric main"><p>CSH2 annualized money-weighted return</p><strong>{result.csh2MoneyWeightedReturn === undefined ? '—' : `${percent(result.csh2MoneyWeightedReturn)}%`}</strong><small>Your annualized outcome from the dated deposits and withdrawals, after transaction costs and the selected taxes.</small></article><article class="metric main"><p>Account annualized money-weighted return</p><strong>{result.accountMoneyWeightedReturn === undefined ? '—' : `${percent(result.accountMoneyWeightedReturn)}%`}</strong><small>Your annualized account outcome from the same external cash flows, credited interest, and entered accrued base interest.</small></article></div>
       <article class:negative class="metric missed-result"><p>{valuesAreEqual ? 'CSH2 and your account have the same value' : negative ? 'CSH2 is behind your account balance by' : 'CSH2 is ahead of your account balance by'}</p><strong>{euro.format(Math.abs(result.missedAmount))}</strong><small>{returnDifference === undefined ? 'A unique annualized money-weighted return is not available for these cash flows.' : Math.abs(returnDifference) < 0.005 ? 'The annualized money-weighted returns are effectively equal.' : `The annualized money-weighted return difference is ${percent(Math.abs(returnDifference))} percentage points in ${returnDifference >= 0 ? 'CSH2’s' : 'your account’s'} favour.`}</small>
@@ -62,20 +79,47 @@
       <div class="metric-row metric-row-details"><article class="metric"><p>Taxes already paid</p><strong>{euro.format(result.paidTob + result.paidCgt + result.paidReyndersTax)}</strong><small>TOB {euro.format(result.paidTob)} · {settings.applyReyndersTax ? `Reynders Tax ${euro.format(result.paidReyndersTax)}` : `CGT ${euro.format(result.paidCgt)}`}</small></article><article class="metric"><p>Taxes if sold today</p><strong>{euro.format(result.terminalTob + result.terminalCgt + result.terminalReyndersTax)}</strong><small>TOB {euro.format(result.terminalTob)} · {settings.applyReyndersTax ? `Reynders Tax ${euro.format(result.terminalReyndersTax)}` : `CGT ${euro.format(result.terminalCgt)}`}</small></article><article class="metric"><p>Broker fees</p><strong>{euro.format(result.paidBrokerFees + result.terminalBrokerFee)}</strong><small>Paid {euro.format(result.paidBrokerFees)} · if sold today {euro.format(result.terminalBrokerFee)}</small></article></div>
       <section class="panel" aria-labelledby="return-heading">
         <div class="section-title">
-          <div><p class="eyebrow">Two views, two different questions</p><h3 id="return-heading">{returnChartMode === 'portfolio-value' ? 'Portfolio value over time' : 'Cash-flow-neutral performance'}</h3></div>
+          <div><p class="eyebrow">Two views, two different questions</p><h3 id="return-heading">{returnChartMode === 'portfolio-value' ? 'Euro portfolio value over time' : 'Cash-flow-neutral performance'}</h3></div>
           <div class="return-mode-picker" role="group" aria-label="Performance chart view">
             <button type="button" aria-pressed={returnChartMode === 'portfolio-value'} onclick={() => returnChartMode = 'portfolio-value'}>Portfolio value</button>
             <button type="button" aria-pressed={returnChartMode === 'time-weighted'} onclick={() => returnChartMode = 'time-weighted'}>Performance</button>
           </div>
         </div>
-        <p class="chart-key"><span class="chart-key-csh2">CSH2 backtest</span>{#if returnChartMode === 'time-weighted'}<span class="chart-key-estr">Gross €STR</span>{/if}<span class="chart-key-account">Your account</span>{#if returnChartMode === 'portfolio-value' && controller.view.returnSeries.portfolioValue.projected}<span class="chart-key-projected">Projection</span>{/if}</p>
+        <p class="chart-key"><span class="chart-key-csh2">CSH2 backtest</span>{#if returnChartMode === 'time-weighted'}<span class="chart-key-estr">Gross €STR</span>{/if}<span class="chart-key-account">Your account</span>{#if (returnChartMode === 'portfolio-value' && controller.view.returnSeries.portfolioValue.projected) || (returnChartMode === 'time-weighted' && controller.view.returnSeries.timeWeighted.projected)}<span class="chart-key-projected">Projection</span>{/if}</p>
         {#if returnChartMode === 'portfolio-value'}
-          <p class="chart-explanation">Actual CSH2 net liquidation value and account balance after the same deposits and withdrawals. Values are in euro and are not investment returns.</p>
-          {#if controller.view.returnSeries.portfolioValue.projected}{@const projection = controller.view.returnSeries.portfolioValue.projected}<p class="chart-explanation projection-explanation">Dashed through {date.format(new Date(`${projection.throughDate}T00:00:00Z`))}: assumes no further cash flows, the selected CSH2 rate scenario of {percent(projection.csh2AnnualRatePercent)}%, and each entered fidelity premium is paid on its earned date.{#if projection.baseAnnualRatePercent !== undefined} The full account balance compounds at the entered {percent(projection.baseAnnualRatePercent)}% annual base rate, and each paid premium joins that balance for subsequent accrual.{/if}</p>{/if}
+          <p class="chart-explanation">Actual CSH2 net liquidation value and account balance after the same deposits and withdrawals. Values are shown in current euros and are not investment returns.</p>
+          {#if controller.view.returnSeries.portfolioValue.projected}
+            {@const projection = controller.view.returnSeries.portfolioValue.projected}
+            <p class="chart-explanation projection-explanation">
+              Dashed through {date.format(new Date(`${projection.throughDate}T00:00:00Z`))}: assumes no further cash flows, the selected CSH2 rate scenario of {percent(projection.csh2AnnualRatePercent)}%, and each entered fidelity premium is paid on its earned date.
+              {#if projection.baseAnnualRatePercent !== undefined}
+                &#32;The full account balance compounds at the entered {percent(projection.baseAnnualRatePercent)}% annual base rate, and each paid premium joins that balance for subsequent accrual.
+              {/if}
+            </p>
+          {/if}
           {#if controller.view.returnSeries.portfolioValue.csh2.length || controller.view.returnSeries.portfolioValue.account.length}<LineChart data={controller.view.returnSeries.portfolioValue} unit="euro" ariaLabel="Portfolio value in euro for CSH2 and your account using the same external cash flows" />{:else}<p class="chart-empty">There isn’t enough history yet to plot portfolio values.</p>{/if}
         {:else}
-          <p class="chart-explanation">Geometric linking removes the deposits and withdrawals themselves from performance. CSH2 still includes the broker fees, transaction taxes, and selected gain taxes those trades trigger; the account includes entered credited and accrued interest; €STR is a gross, untaxed market benchmark.</p>
-          {#if controller.view.returnSeries.timeWeighted.csh2.length || controller.view.returnSeries.timeWeighted.overnight.length || controller.view.returnSeries.timeWeighted.account.length}<LineChart data={controller.view.returnSeries.timeWeighted} ariaLabel="Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows" />{:else}<p class="chart-empty">There isn’t enough history yet to plot time-weighted performance.</p>{/if}
+          <p class="chart-explanation">
+            Geometric linking removes the deposits and withdrawals themselves from performance. CSH2 still includes the broker fees, transaction taxes, and selected gain taxes those trades trigger; the account includes entered credited and accrued interest; €STR is a gross, untaxed market benchmark.
+            {#if returnMode === 'real'}
+              &#32;The chart begins only once both CPI endpoints are available.
+            {/if}
+          </p>
+          {#if controller.view.returnSeries.timeWeighted.projected}
+            {@const projection = controller.view.returnSeries.timeWeighted.projected}
+            <p class="chart-explanation projection-explanation">
+              Dashed through {date.format(new Date(`${projection.throughDate}T00:00:00Z`))}: extends each observed TWR endpoint with no further cash flows, the selected CSH2 rate scenario of {percent(projection.csh2AnnualRatePercent)}%, the latest €STR rate of {percent(projection.overnightRatePercent)}%, and
+              {#if projection.baseAnnualRatePercent !== undefined}
+                &#32;the entered account base rate of {percent(projection.baseAnnualRatePercent)}%
+              {:else}
+                &#32;the account’s observed interest assumptions
+              {/if}; future fidelity premiums are credited on their earned dates and included as internal account returns.
+              {#if returnMode === 'real'}
+                &#32;This forward section is provisional and inflation-adjusted using trailing 12-month observed CPI extrapolation.
+              {/if}
+            </p>
+          {/if}
+          {#if controller.view.returnSeries.timeWeighted.csh2.length || controller.view.returnSeries.timeWeighted.overnight.length || controller.view.returnSeries.timeWeighted.account.length}<LineChart data={controller.view.returnSeries.timeWeighted} cpiIndices={returnMode === 'real' ? controller.view.cpiMetadata.indices : undefined} ariaLabel="Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows" />{:else}<p class="chart-empty">There isn’t enough CPI-covered history yet to plot time-weighted performance.</p>{/if}
         {/if}
       </section>
       {#if result.fidelityPremiumAssessments.length}

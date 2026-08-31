@@ -6,7 +6,8 @@
   "scripts": {
     "check-current-rate-model": "node scripts/check-current-rate-model.mjs",
     "update-current-rate-model": "node scripts/update-current-rate-model.mjs && npm run check-current-rate-model",
-    "refresh-data": "node scripts/refresh-static-data.mjs && npm run check-current-rate-model",
+    "refresh-data": "node scripts/refresh-static-data.mjs && npm run refresh-cpi && npm run check-current-rate-model",
+    "refresh-cpi": "node scripts/refresh-cpi.mjs",
     "refresh-csh2": "node scripts/refresh-static-data.mjs --csh2 && npm run check-current-rate-model",
     "refresh-overnight-rates": "node scripts/refresh-static-data.mjs --overnight-rates && npm run check-current-rate-model",
     "start": "vite",

@@ -177,15 +177,24 @@ describe('chart update paths', () => {
     expect(chartApi.resize).not.toHaveBeenCalled();
   });
 
-  it('reserves daily calendar space between sparse chart observations', async () => {
+  it('keeps benchmark observations sparse while reserving daily calendar space', async () => {
     const series = Array.from({ length: 7 }, seriesSpy);
     let nextSeries = 0;
     chartApi.addSeries.mockImplementation(() => series[nextSeries++]);
     const result = await render(LineChart, {
       data: {
         csh2: [{ date: '2026-01-01', value: 1 }, { date: '2026-01-03', value: 2 }],
-        overnight: [{ date: '2026-01-01', value: 0.5 }, { date: '2026-01-03', value: 0.6 }]
+        overnight: [{ date: '2026-01-01', value: 0.5 }, { date: '2026-01-03', value: 0.6 }],
+        projected: {
+          csh2: [{ date: '2026-01-01', value: 3 }, { date: '2026-01-03', value: 4 }],
+          overnight: [{ date: '2026-01-01', value: 0.7 }, { date: '2026-01-03', value: 0.8 }],
+          account: [],
+          throughDate: '2026-01-03',
+          csh2AnnualRatePercent: 3,
+          overnightRatePercent: 1
+        }
       },
+      cpiIndices: { '2025-01': 100, '2026-01': 102 },
       ariaLabel: 'Returns'
     });
     await flushFrames();
@@ -197,26 +206,29 @@ describe('chart update paths', () => {
     ]);
     expect(series[0].setData).toHaveBeenCalledWith([
       { time: '2026-01-01', value: 1 },
-      { time: '2026-01-02', value: 1 },
       { time: '2026-01-03', value: 2 }
     ]);
     expect(series[1].setData).toHaveBeenCalledWith([
       { time: '2026-01-01', value: 0.5 },
-      { time: '2026-01-02', value: 0.5 },
       { time: '2026-01-03', value: 0.6 }
+    ]);
+    expect(series[3].setData).toHaveBeenCalledWith([
+      { time: '2026-01-01', value: 3 },
+      { time: '2026-01-03', value: 4 }
+    ]);
+    expect(series[4].setData).toHaveBeenCalledWith([
+      { time: '2026-01-01', value: 0.7 },
+      { time: '2026-01-03', value: 0.8 }
     ]);
 
     const handler = chartApi.subscribeCrosshairMove.mock.calls[0]?.[0];
     handler({
       time: '2026-01-02',
       point: { x: 100, y: 100 },
-      seriesData: new Map([
-        [series[0], { value: 1 }],
-        [series[1], { value: 0.5 }]
-      ])
+      seriesData: new Map()
     });
-    await expect.element(result.getByText('CSH2 (1.00%)', { exact: true })).toBeVisible();
-    await expect.element(result.getByText('€STR (0.50%)', { exact: true })).toBeVisible();
+    await expect.element(result.getByText('CSH2 (1.00%)', { exact: true })).toHaveLength(0);
+    await expect.element(result.getByText('€STR (0.50%)', { exact: true })).toHaveLength(0);
   });
 
   it('updates the chart legend with every series value at the crosshair', async () => {

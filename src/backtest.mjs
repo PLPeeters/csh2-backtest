@@ -28,4 +28,5 @@ export {
   estimateAnnualizedAfterTaxCsh2Rate,
   findObservedHoldingPeriods
 } from './backtest/return-series.mjs';
-export { buildAccountTimeWeightedReturnSeries, buildCsh2TimeWeightedReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateMoneyWeightedReturn } from './backtest/performance-returns.mjs';
+export { buildAccountTimeWeightedReturnSeries, buildCsh2TimeWeightedReturnSeries, buildTimeWeightedReturnProjection, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn } from './backtest/performance-returns.mjs';
+export { cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, deflateCumulativeReturnSeries, latestAnnualInflation, realAnnualizedReturn, realAnnualRate, realGrowthFactor, realGrowthFactorWithProvenance } from './backtest/inflation.mjs';

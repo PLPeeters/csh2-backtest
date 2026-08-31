@@ -2,9 +2,9 @@
   import { ColorType, createChart, LineSeries, LineStyle, LineType } from 'lightweight-charts';
   import type { IChartApi, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
   import { onMount, untrack } from 'svelte';
-  import type { BenchmarkSeries, ChartPoint, ComparisonSeries } from '../types';
+  import type { BenchmarkSeries, ChartPoint, ComparisonSeries, CpiEnvelope } from '../types';
   type ChartSeries = BenchmarkSeries | ComparisonSeries;
-  let { data, ariaLabel, from, to, unit = 'percent' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro' } = $props();
+  let { data, ariaLabel, from, to, unit = 'percent' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro'; cpiIndices?: CpiEnvelope['indices'] } = $props();
   let host: HTMLDivElement;
   let chart: IChartApi | undefined;
   let csh2Series: ISeriesApi<'Line'> | undefined;
@@ -46,19 +46,6 @@
     return points;
   }
 
-  function fillForwardData(points: ChartPoint[], calendar: { time: Time }[]) {
-    if (!points.length) return [];
-    const values = new Map(points.map((point) => [point.date, point.value]));
-    const dates = [...values.keys()].toSorted();
-    let latestValue: number | undefined;
-    return calendar.flatMap(({ time }) => {
-      const date = time as string;
-      if (date < dates[0] || date > dates.at(-1)!) return [];
-      latestValue = values.get(date) ?? latestValue;
-      return latestValue === undefined ? [] : [{ time, value: latestValue }];
-    });
-  }
-
   function latestPoint(...pointSets: ChartPoint[][]) {
     return pointSets.flat().toSorted((left, right) => right.date.localeCompare(left.date))[0];
   }
@@ -88,7 +75,8 @@
     const latest = latestPoint(...series.flatMap((item) => item.points));
     legendDate = formatLegendDate(hasCrosshair ? param?.time : latest?.date as Time | undefined);
     legendValues = series.flatMap(({ color, label, points, chartSeries }) => {
-      const crosshairValue = hasCrosshair
+      const hasPointAtCrosshair = typeof param?.time === 'string' && points.some((items) => items.some((point) => point.date === param.time));
+      const crosshairValue = hasCrosshair && hasPointAtCrosshair
         ? chartSeries.map((item) => valueFromChartPoint(param?.seriesData.get(item))).find((item): item is number => item !== undefined)
         : undefined;
       const carriedAccountValue = crosshairValue === undefined && label === 'Your account' && typeof param?.time === 'string'
@@ -103,13 +91,13 @@
   function updateData(nextData: ChartSeries) {
     if (Object.is(nextData, loadedData) || !csh2Series || !overnightSeries || !accountSeries || !projectedCsh2Series || !projectedOvernightSeries || !projectedAccountSeries || !calendarSeries) return false;
     const calendar = calendarData(nextData);
-    csh2Series.setData(fillForwardData(nextData.csh2, calendar));
-    overnightSeries.setData(fillForwardData(nextData.overnight, calendar));
+    csh2Series.setData(chartData(nextData.csh2));
+    overnightSeries.setData(chartData(nextData.overnight));
     const account = 'account' in nextData ? nextData.account : [];
     accountSeries.setData(chartData(account));
     const projected = 'projected' in nextData ? nextData.projected : undefined;
-    projectedCsh2Series.setData(fillForwardData(projected?.csh2 ?? [], calendar));
-    projectedOvernightSeries.setData(fillForwardData(projected?.overnight ?? [], calendar));
+    projectedCsh2Series.setData(chartData(projected?.csh2 ?? []));
+    projectedOvernightSeries.setData(chartData(projected?.overnight ?? []));
     projectedAccountSeries.setData(chartData(projected?.account ?? []));
     calendarSeries.setData(calendar);
     csh2Series.applyOptions({ lastValueVisible: !projected, priceLineVisible: !projected});

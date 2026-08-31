@@ -7,6 +7,9 @@ function request(overrides: Partial<BenchmarkHistoryRequest> = {}): BenchmarkHis
     prices: { '2026-08-20': { close: 100 } },
     rates: { '2026-08-20': 2 },
     to: '2026-08-20',
+    cpiIndices: { '2025-08': 100, '2026-08': 102 },
+    cpiPublicationIdentity: 'cpi-test',
+    returnMode: 'nominal',
     ...overrides
   };
 }
@@ -27,5 +30,12 @@ describe('benchmark history request identity', () => {
 
   it('invalidates when the requested valuation date changes', () => {
     expect(benchmarkHistoryRequestKey(request({ to: '2026-08-19' }))).not.toBe(benchmarkHistoryRequestKey(request()));
+  });
+
+  it('invalidates for corrected CPI, a new CPI publication, or return-mode toggle', () => {
+    const original = benchmarkHistoryRequestKey(request());
+    expect(benchmarkHistoryRequestKey(request({ cpiIndices: { '2025-08': 100, '2026-08': 103 } }))).not.toBe(original);
+    expect(benchmarkHistoryRequestKey(request({ cpiPublicationIdentity: 'cpi-revised' }))).not.toBe(original);
+    expect(benchmarkHistoryRequestKey(request({ returnMode: 'real' }))).not.toBe(original);
   });
 });
