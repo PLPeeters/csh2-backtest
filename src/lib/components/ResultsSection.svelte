@@ -24,6 +24,13 @@
       otherAlternative: comparison.otherAlternative && formatNextYearDifference(comparison.otherAlternative.label, comparison.otherAlternative.difference)
     };
   };
+
+  const isSecondaryReturn = (value: number | undefined, other: number | undefined) => {
+    if (value === undefined || other === undefined || value === other) return false;
+    const bothPositive = value > 0 && other > 0;
+    const bothNegative = value < 0 && other < 0;
+    return (bothPositive && value < other) || (bothNegative && value > other);
+  };
 </script>
 <section id="results" aria-live="polite">
 {#if controller.view}
@@ -69,7 +76,7 @@
       </p>
     {/if}
     <div class="metrics">
-      <div class="metric-row metric-row-values outcome-returns"><article class="metric main"><p>CSH2 annualized money-weighted return</p><strong>{result.csh2MoneyWeightedReturn === undefined ? '—' : `${percent(result.csh2MoneyWeightedReturn)}%`}</strong><small>Your annualized outcome from the dated deposits and withdrawals, after transaction costs and the selected taxes.</small></article><article class="metric main"><p>Account annualized money-weighted return</p><strong>{result.accountMoneyWeightedReturn === undefined ? '—' : `${percent(result.accountMoneyWeightedReturn)}%`}</strong><small>Your annualized account outcome from the same external cash flows, credited interest, and entered accrued base interest.</small></article></div>
+      <div class="metric-row metric-row-values outcome-returns"><article class:negative={result.csh2MoneyWeightedReturn !== undefined && result.csh2MoneyWeightedReturn < 0} class:comparison-secondary={isSecondaryReturn(result.csh2MoneyWeightedReturn, result.accountMoneyWeightedReturn)} class="metric main"><p>CSH2 annualized money-weighted return</p><strong>{result.csh2MoneyWeightedReturn === undefined ? '—' : `${percent(result.csh2MoneyWeightedReturn)}%`}</strong><small>Your annualized outcome from the dated deposits and withdrawals, after transaction costs and the selected taxes.</small></article><article class:negative={result.accountMoneyWeightedReturn !== undefined && result.accountMoneyWeightedReturn < 0} class:comparison-secondary={isSecondaryReturn(result.accountMoneyWeightedReturn, result.csh2MoneyWeightedReturn)} class="metric main"><p>Account annualized money-weighted return</p><strong>{result.accountMoneyWeightedReturn === undefined ? '—' : `${percent(result.accountMoneyWeightedReturn)}%`}</strong><small>Your annualized account outcome from the same external cash flows, credited interest, and entered accrued base interest.</small></article></div>
       <article class:negative class="metric missed-result"><p>{valuesAreEqual ? 'CSH2 and your account have the same value' : negative ? 'CSH2 is behind your account balance by' : 'CSH2 is ahead of your account balance by'}</p><strong>{euro.format(Math.abs(result.missedAmount))}</strong><small>{returnDifference === undefined ? 'A unique annualized money-weighted return is not available for these cash flows.' : Math.abs(returnDifference) < 0.005 ? 'The annualized money-weighted returns are effectively equal.' : `The annualized money-weighted return difference is ${percent(Math.abs(returnDifference))} percentage points in ${returnDifference >= 0 ? 'CSH2’s' : 'your account’s'} favour.`}</small>
         {#if negative && result.breakEvenEstimate}<small>Estimated catch-up with your account in <b>{duration(result.valuation.date, result.breakEvenEstimate.date)}</b></small><small>(using the selected CSH2 rate scenario of {percent(result.breakEvenEstimate.csh2AnnualRatePercent)}%)</small>{:else if negative}<small>Catch-up with your account can’t be estimated from the selected CSH2 rate scenario.</small>{/if}
       </article>

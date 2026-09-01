@@ -179,4 +179,17 @@ describe('bounded backtest stage cache', () => {
     clearCurrentRateModelCache();
     expect(calculateBacktest(flows, settings, market, '2026-08-20')).toEqual(initiallyCalculated);
   });
+
+  it('reuses both warmed return-mode histories when switching back', () => {
+    const calculator = createBacktestCalculator();
+    const nominal = calculator.calculate(flows, settings, market, '2026-08-20');
+    const real = calculator.calculate(flows, changedSettings({ returnMode: 'real' }), market, '2026-08-20');
+    const nominalAgain = calculator.calculate(flows, settings, market, '2026-08-20');
+
+    expect(real.returnSeries.csh2).not.toBe(nominal.returnSeries.csh2);
+    expect(nominalAgain.returnSeries.csh2).toBe(nominal.returnSeries.csh2);
+    expect(nominalAgain.returnSeries.overnight).toBe(nominal.returnSeries.overnight);
+    expect(nominalAgain.returnSeries.account).toBe(nominal.returnSeries.account);
+  });
+
 });

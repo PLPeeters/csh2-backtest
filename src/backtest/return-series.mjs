@@ -2,7 +2,7 @@ import { CGT_EXEMPTION_START_YEAR, CGT_RATE, dateAfter, daysBetween, overnightAc
 import { isUsableClose, priceValue } from './quotes.mjs';
 import { runBacktest } from './simulation.mjs';
 import { estimateSingleInvestmentLiquidationValue } from './taxation.mjs';
-import { deflateCumulativeReturnSeries, realGrowthFactorWithProvenance } from './inflation.mjs';
+import { cpiObservations, deflateCumulativeReturnSeries, realGrowthFactorWithAnchors } from './inflation.mjs';
 
 /** Builds the CSH2 net-return chart from each real price date after the first inflow. */
 export function buildBacktestReturnSeries(flows, prices, options) {
@@ -54,15 +54,16 @@ function priceRatio(from, to) {
   return to.value / from.value;
 }
 
-function annualizedReturnPoint(date, nominalFactor, fromDate, toDate, cpiIndices) {
+function annualizedReturnPoint(date, nominalFactor, fromDate, toDate, cpiIndices, cpiAnchors) {
   const days = daysBetween(fromDate, toDate);
-  const adjusted = cpiIndices ? realGrowthFactorWithProvenance(nominalFactor, fromDate, toDate, cpiIndices) : undefined;
+  const adjusted = cpiIndices ? realGrowthFactorWithAnchors(nominalFactor, fromDate, toDate, cpiIndices, cpiAnchors ?? cpiObservations(cpiIndices)) : undefined;
   const factor = cpiIndices ? adjusted?.value : nominalFactor;
   if (factor === undefined) return undefined;
   return { date, value: (factor ** (365 / days) - 1) * 100, ...(adjusted ? { cpiStatus: adjusted.status } : {}) };
 }
 
 function trailingAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio, cpiIndices) {
+  const cpiAnchors = cpiIndices ? cpiObservations(cpiIndices) : undefined;
   let priorIndex = 0;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
@@ -70,11 +71,12 @@ function trailingAnnualizedReturnSeries(points, from, lookbackDays, periodRatio 
     const prior = points[priorIndex];
     if (priorIndex >= index || daysBetween(prior.date, point.date) < lookbackDays) return undefined;
     const nominalFactor = periodRatio(prior, point);
-    return annualizedReturnPoint(point.date, nominalFactor, prior.date, point.date, cpiIndices);
+    return annualizedReturnPoint(point.date, nominalFactor, prior.date, point.date, cpiIndices, cpiAnchors);
   }).filter(Boolean);
 }
 
 function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio = priceRatio, cpiIndices) {
+  const cpiAnchors = cpiIndices ? cpiObservations(cpiIndices) : undefined;
   let futureIndex = 1;
   return points.map((point, index) => {
     if (point.date < from) return undefined;
@@ -83,7 +85,7 @@ function forwardAnnualizedReturnSeries(points, from, lookbackDays, periodRatio =
     const future = points[futureIndex];
     if (!future) return undefined;
     const nominalFactor = periodRatio(point, future);
-    return annualizedReturnPoint(point.date, nominalFactor, point.date, future.date, cpiIndices);
+    return annualizedReturnPoint(point.date, nominalFactor, point.date, future.date, cpiIndices, cpiAnchors);
   }).filter(Boolean);
 }
 

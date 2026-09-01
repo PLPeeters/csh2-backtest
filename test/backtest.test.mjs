@@ -14,6 +14,20 @@ test('uses observed mid-month anchors and geometric interpolation without backwa
   assert.equal(cpiIndexForDate(indices, '2025-04-14'), undefined);
 });
 
+test('refreshes CPI lookups after in-place index mutation', () => {
+  const indices = { '2025-04': 100, '2025-05': 121 };
+  const initial = cpiPointForDate(indices, '2025-04-30');
+  indices['2025-05'] = 144;
+  const changedValue = cpiPointForDate(indices, '2025-04-30');
+  indices['2025-06'] = 169;
+  const changedShape = cpiPointForDate(indices, '2025-05-30');
+
+  assert.ok(Math.abs(initial.value - 110) < 1e-12);
+  assert.ok(Math.abs(changedValue.value - 120) < 1e-12);
+  assert.equal(changedShape.status, 'interpolated');
+  assert.equal(changedShape.upperMonth, '2025-06');
+});
+
 test('uses exact Fisher real-return conversion for inflation, zero inflation, and deflation', () => {
   assert.ok(Math.abs(realGrowthFactor(1.1, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 105 }) - 1.1 / 1.05) < 1e-12);
   assert.equal(realGrowthFactor(1.1, '2025-01-15', '2026-01-15', { '2025-01': 100, '2026-01': 100 }), 1.1);

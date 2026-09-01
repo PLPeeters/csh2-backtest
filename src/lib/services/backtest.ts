@@ -44,11 +44,12 @@ function annualizedLinkedReturn(points: CalculationView['returnSeries']['csh2'])
 }
 
 interface StageEntry<T> { key: string; value: T }
+const MAX_CACHED_STAGES = 8;
 
-/** Owns one cached input per stage for one market dataset at a time. */
+/** Owns a small LRU-like set of cached inputs per stage for one market dataset at a time. */
 export function createBacktestCalculator() {
   let marketKey: string | undefined;
-  let observedStage: StageEntry<{
+  const observedStages = new Map<string, StageEntry<{
     csh2: CalculationView['returnSeries']['csh2'];
     nominalCsh2: CalculationView['returnSeries']['csh2'];
     overnight: CalculationView['returnSeries']['overnight'];
@@ -56,22 +57,34 @@ export function createBacktestCalculator() {
     timeWeighted: CalculationView['returnSeries']['timeWeighted'];
     simulation: Omit<BacktestResult, 'fidelityPremiumAssessments' | 'observedHoldingPeriods'>;
     observedHoldingPeriods: BacktestResult['observedHoldingPeriods'];
-  }> | undefined;
-  let accountHistoryStage: StageEntry<{ displayed: CalculationView['returnSeries']['account']; nominal: CalculationView['returnSeries']['account'] }> | undefined;
-  let scenarioStage: StageEntry<{
+  }>>();
+  const accountHistoryStages = new Map<string, StageEntry<{ displayed: CalculationView['returnSeries']['account']; nominal: CalculationView['returnSeries']['account'] }>>();
+  const scenarioStages = new Map<string, StageEntry<{
     breakEvenEstimate: BacktestResult['breakEvenEstimate'];
     marketProjection: ReturnType<typeof buildMarketReturnProjection>;
-  }> | undefined;
+  }>>();
   let projectedAccountStage: StageEntry<ReturnType<typeof buildProjectedAccountReturnSeries>> | undefined;
 
   const clear = () => {
     marketKey = undefined;
-    observedStage = undefined;
-    accountHistoryStage = undefined;
-    scenarioStage = undefined;
+    observedStages.clear();
+    accountHistoryStages.clear();
+    scenarioStages.clear();
     projectedAccountStage = undefined;
   };
-  const getStage = <T>(entry: StageEntry<T> | undefined, key: string, build: () => T): StageEntry<T> =>
+  const getStage = <T>(entries: Map<string, StageEntry<T>>, key: string, build: () => T): StageEntry<T> => {
+    const existing = entries.get(key);
+    if (existing) {
+      entries.delete(key);
+      entries.set(key, existing);
+      return existing;
+    }
+    const entry = { key, value: build() };
+    entries.set(key, entry);
+    if (entries.size > MAX_CACHED_STAGES) entries.delete(entries.keys().next().value!);
+    return entry;
+  };
+  const getSingleStage = <T>(entry: StageEntry<T> | undefined, key: string, build: () => T): StageEntry<T> =>
     entry?.key === key ? entry : { key, value: build() };
 
   const calculate = (flows: CashFlowDraft[], settings: CalculationSettings, market: MarketDataBundle, today: string): CalculationView => {
@@ -98,7 +111,7 @@ export function createBacktestCalculator() {
     const calculationOptions = options(settings);
     const returnOptions = settings.returnMode === 'real' ? { ...calculationOptions, cpiIndices: market.cpiData.indices } : calculationOptions;
     const historicalKey = JSON.stringify([normalized, calculationOptions, settings.returnMode]);
-    observedStage = getStage(observedStage, historicalKey, () => {
+    const observedStage = getStage(observedStages, historicalKey, () => {
       const nominalCsh2 = buildBacktestReturnSeries(normalized, market.data.prices, calculationOptions).filter((point) => point.date <= valuationDate);
       const csh2 = settings.returnMode === 'real' ? buildBacktestReturnSeries(normalized, market.data.prices, returnOptions).filter((point) => point.date <= valuationDate) : nominalCsh2;
       const nominalOvernight = buildOvernightBenchmarkReturnSeries(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, valuationDate, calculationOptions);
@@ -146,7 +159,7 @@ export function createBacktestCalculator() {
     });
 
     const accountHistoryKey = JSON.stringify([normalized, valuationDate, accruedBaseInterest, settings.returnMode]);
-    accountHistoryStage = getStage(accountHistoryStage, accountHistoryKey, () => {
+    const accountHistoryStage = getStage(accountHistoryStages, accountHistoryKey, () => {
       const nominal = buildAccountReturnSeries(normalized, valuationDate, calculationOptions);
       return { nominal, displayed: settings.returnMode === 'real' ? buildAccountReturnSeries(normalized, valuationDate, returnOptions) : nominal };
     });
@@ -155,7 +168,7 @@ export function createBacktestCalculator() {
     const csh2AnnualRatePercent = scenarioRate(currentRateModel, settings.csh2RateScenario);
     const projectionAssumption = { csh2AnnualRatePercent };
     const scenarioKey = JSON.stringify([historicalKey, fidelityPremiums, settings.csh2RateScenario]);
-    scenarioStage = getStage(scenarioStage, scenarioKey, () => ({
+    const scenarioStage = getStage(scenarioStages, scenarioKey, () => ({
       breakEvenEstimate: estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption),
       marketProjection: fidelityPremiums.length ? buildMarketReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption) : undefined
     }));
@@ -171,7 +184,7 @@ export function createBacktestCalculator() {
     if (bestSavingsBaseRateIsValid) accountRates.bestSavingsBaseAnnualRatePercent = bestSavingsBaseRate;
     if (bestSavingsBaseRateInput !== '' && settings.bestSavingsFidelityPremium !== '') accountRates.bestSavingsFidelityPremiumPercent = Number(settings.bestSavingsFidelityPremium);
     const projectedAccountKey = JSON.stringify([normalized, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
-    projectedAccountStage = getStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length && accountBaseRateIsValid
+    projectedAccountStage = getSingleStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length && accountBaseRateIsValid
       ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates)
       : undefined);
 

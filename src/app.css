@@ -189,6 +189,10 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .metric.main p { color: #c9ddd3; }
 .metric.main.negative { border-color: #842d24; background: #8a3026; }
 .metric.main.negative p, .metric.main.negative small { color: #f7d9d4; }
+.metric.main.comparison-secondary { border-color: #b5d0c1; background: #e7f1ec; color: #294b3f; }
+.metric.main.comparison-secondary p, .metric.main.comparison-secondary small { color: #506f62; }
+.metric.main.negative.comparison-secondary { border-color: #d8aaa4; background: #fff5f3; color: #762f28; }
+.metric.main.negative.comparison-secondary p, .metric.main.negative.comparison-secondary small { color: #94564e; }
 .metric.missed-result { grid-column: 1 / -1; padding: 36px 28px; text-align: center; }
 .metric.missed-result.negative { border-color: #d8aaa4; background: #fff5f3; }
 .metric.missed-result p { margin-bottom: 10px; font-size: .9rem; }

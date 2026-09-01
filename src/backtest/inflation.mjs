@@ -7,28 +7,48 @@ function validDate(date) {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00Z`));
 }
 
-function observations(indices) {
+const observationCache = new WeakMap();
+
+function observationSignature(indices) {
+  return JSON.stringify(Object.keys(indices).map((month) => [month, indices[month]]));
+}
+
+export function cpiObservations(indices) {
   if (!indices || typeof indices !== 'object') return [];
-  return Object.entries(indices)
+  const signature = observationSignature(indices);
+  const cached = observationCache.get(indices);
+  if (cached?.signature === signature) return cached.anchors;
+  const anchors = Object.entries(indices)
     .filter(([month, value]) => /^\d{4}-\d{2}$/.test(month) && Number.isFinite(value) && value > 0)
     .map(([month, value]) => ({ month, date: `${month}-15`, value }))
     .sort((left, right) => left.date.localeCompare(right.date));
+  observationCache.set(indices, { signature, anchors });
+  return anchors;
+}
+
+function lowerBound(anchors, date) {
+  let low = 0;
+  let high = anchors.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (anchors[middle].date < date) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 function leastAuthoritative(...statuses) {
   return statuses.reduce((least, status) => statusRank[status] > statusRank[least] ? status : least, 'observed');
 }
 
-/** Resolves a smooth daily CPI level and records whether it was observed or estimated. */
-export function cpiPointForDate(indices, date, { mode = 'retrospective', projectionAnnualRate } = {}) {
+function cpiPointFromAnchors(indices, anchors, date, { mode = 'retrospective', projectionAnnualRate } = {}) {
   if (!validDate(date) || (mode !== 'retrospective' && mode !== 'projection')) return undefined;
-  const anchors = observations(indices);
   if (!anchors.length || date < anchors[0].date) return undefined;
-  const exact = anchors.find((anchor) => anchor.date === date);
+  const upperIndex = lowerBound(anchors, date);
+  const exact = anchors[upperIndex]?.date === date ? anchors[upperIndex] : undefined;
   if (exact) return { value: exact.value, status: 'observed', lowerMonth: exact.month, upperMonth: exact.month };
 
-  const upperIndex = anchors.findIndex((anchor) => anchor.date > date);
-  if (upperIndex > 0) {
+  if (upperIndex > 0 && upperIndex < anchors.length) {
     const lower = anchors[upperIndex - 1];
     const upper = anchors[upperIndex];
     const elapsed = daysBetween(lower.date, date);
@@ -55,16 +75,25 @@ export function cpiPointForDate(indices, date, { mode = 'retrospective', project
   return { value: latest.value * annualFactor ** (elapsed / DAYS_PER_YEAR), status: 'extrapolated', lowerMonth: latest.month };
 }
 
+/** Resolves a smooth daily CPI level and records whether it was observed or estimated. */
+export function cpiPointForDate(indices, date, options) {
+  return cpiPointFromAnchors(indices, cpiObservations(indices), date, options);
+}
+
 export function cpiIndexForDate(indices, date, options) {
   return cpiPointForDate(indices, date, options)?.value;
 }
 
-export function realGrowthFactorWithProvenance(nominalFactor, fromDate, toDate, indices, options) {
+export function realGrowthFactorWithAnchors(nominalFactor, fromDate, toDate, indices, anchors, options) {
   if (!Number.isFinite(nominalFactor) || nominalFactor < 0 || !validDate(fromDate) || !validDate(toDate) || toDate < fromDate) return undefined;
-  const from = cpiPointForDate(indices, fromDate, options);
-  const to = cpiPointForDate(indices, toDate, options);
+  const from = cpiPointFromAnchors(indices, anchors, fromDate, options);
+  const to = cpiPointFromAnchors(indices, anchors, toDate, options);
   if (!from || !to) return undefined;
   return { value: nominalFactor / (to.value / from.value), status: leastAuthoritative(from.status, to.status) };
+}
+
+export function realGrowthFactorWithProvenance(nominalFactor, fromDate, toDate, indices, options) {
+  return realGrowthFactorWithAnchors(nominalFactor, fromDate, toDate, indices, cpiObservations(indices), options);
 }
 
 export function realGrowthFactor(nominalFactor, fromDate, toDate, indices, options) {
@@ -80,7 +109,7 @@ export function realAnnualizedReturn(nominalFactor, fromDate, toDate, indices, o
 /** Returns observed trailing twelve-month inflation from raw monthly anchors. */
 export function latestAnnualInflation(indices, asOfDate) {
   if (!validDate(asOfDate)) return undefined;
-  const latest = observations(indices).filter((anchor) => anchor.date <= asOfDate).at(-1);
+  const latest = cpiObservations(indices).filter((anchor) => anchor.date <= asOfDate).at(-1);
   if (!latest) return undefined;
   const [year, month] = latest.month.split('-').map(Number);
   const prior = indices[`${String(year - 1).padStart(4, '0')}-${String(month).padStart(2, '0')}`];
@@ -93,11 +122,12 @@ export function realAnnualRate(nominalRatePercent, annualInflationPercent) {
 }
 
 export function deflateCashFlowsToDate(cashFlows, valuationDate, indices, options) {
-  const valuation = cpiIndexForDate(indices, valuationDate, options);
+  const anchors = cpiObservations(indices);
+  const valuation = cpiPointFromAnchors(indices, anchors, valuationDate, options)?.value;
   if (!Number.isFinite(valuation) || !Array.isArray(cashFlows)) return undefined;
   const adjusted = [];
   for (const flow of cashFlows) {
-    const observation = cpiIndexForDate(indices, flow?.date, options);
+    const observation = cpiPointFromAnchors(indices, anchors, flow?.date, options)?.value;
     if (!Number.isFinite(observation) || !Number.isFinite(flow?.amount)) return undefined;
     adjusted.push({ ...flow, amount: flow.amount * valuation / observation });
   }
@@ -107,17 +137,18 @@ export function deflateCashFlowsToDate(cashFlows, valuationDate, indices, option
 /** Converts cumulative nominal percentage points to real points and retains CPI provenance. */
 export function deflateCumulativeReturnSeries(points, fromDate, indices, options) {
   if (!Array.isArray(points)) return [];
-  if (!cpiPointForDate(indices, fromDate, options)) {
-    const firstCovered = points.find((point) => cpiPointForDate(indices, point.date, options));
+  const anchors = cpiObservations(indices);
+  if (!cpiPointFromAnchors(indices, anchors, fromDate, options)) {
+    const firstCovered = points.find((point) => cpiPointFromAnchors(indices, anchors, point.date, options));
     if (!firstCovered) return [];
     const baselineFactor = 1 + firstCovered.value / 100;
     return points.filter((point) => point.date >= firstCovered.date).flatMap((point) => {
-      const adjusted = realGrowthFactorWithProvenance((1 + point.value / 100) / baselineFactor, firstCovered.date, point.date, indices, options);
+      const adjusted = realGrowthFactorWithAnchors((1 + point.value / 100) / baselineFactor, firstCovered.date, point.date, indices, anchors, options);
       return adjusted ? [{ ...point, value: (adjusted.value - 1) * 100, cpiStatus: adjusted.status }] : [];
     });
   }
   return points.flatMap((point) => {
-    const adjusted = realGrowthFactorWithProvenance(1 + point.value / 100, fromDate, point.date, indices, options);
+    const adjusted = realGrowthFactorWithAnchors(1 + point.value / 100, fromDate, point.date, indices, anchors, options);
     return adjusted ? [{ ...point, value: (adjusted.value - 1) * 100, cpiStatus: adjusted.status }] : [];
   });
 }
