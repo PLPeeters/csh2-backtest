@@ -40,16 +40,15 @@ function withoutCachedAt(value) {
 
 export async function runCpiRefresh({ publicationPath = defaultPublicationPath, fetchJsonImpl = fetchJson, now = () => new Date(), logger = console } = {}) {
   const existing = await readPublication(publicationPath);
-  const seeded = Object.keys(existing.indices ?? {}).length > 0;
   const [currentMetadata, currentResult, backfillMetadata, backfillResult] = await Promise.all([
     fetchJsonImpl(CPI_CURRENT_VIEW_ID, 'current-view metadata'),
     fetchJsonImpl(`${CPI_CURRENT_VIEW_ID}/result/JSON`, 'current-view result'),
-    seeded ? undefined : fetchJsonImpl(CPI_BACKFILL_VIEW_ID, 'backfill metadata'),
-    seeded ? undefined : fetchJsonImpl(`${CPI_BACKFILL_VIEW_ID}/result/JSON`, 'backfill result')
+    fetchJsonImpl(CPI_BACKFILL_VIEW_ID, 'backfill metadata'),
+    fetchJsonImpl(`${CPI_BACKFILL_VIEW_ID}/result/JSON`, 'backfill result')
   ]);
   assertMetadata(currentMetadata, CPI_CURRENT_VIEW_ID, 'current');
   if (!currentMetadata.standard || !currentMetadata.published) throw new Error('Statbel current CPI view is no longer the published standard view.');
-  if (!seeded) assertMetadata(backfillMetadata, CPI_BACKFILL_VIEW_ID, 'backfill');
+  assertMetadata(backfillMetadata, CPI_BACKFILL_VIEW_ID, 'backfill');
 
   const publication = publishCpi(existing, backfillResult, currentResult, now().toISOString());
   if (JSON.stringify(withoutCachedAt(existing)) === JSON.stringify(withoutCachedAt(publication))) {

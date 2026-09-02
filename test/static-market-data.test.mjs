@@ -45,15 +45,16 @@ test('publishes a current-rate model for the latest real CSH2 close', async () =
   assert.equal(publication.model.valuationDate, latestRealClose);
 });
 
-test('publishes contiguous monthly Statbel CPI history from January 2016', async () => {
+test('publishes contiguous monthly Statbel CPI history from February 2015', async () => {
   const publication = JSON.parse(await readFile(new URL('../src/assets/data/cpi.json', import.meta.url), 'utf8'));
   assert.equal(publication.dataSourceId, '314984ea-123f-4c42-93e5-4942cb877795');
   assert.equal(publication.backfillViewId, '942375c9-71d5-4d0c-9120-e051bd58b9d5');
   assert.equal(publication.currentViewId, '86586e27-90ac-47c6-87ce-64b63194e605');
   assert.equal(publication.license, 'https://statbel.fgov.be/en/cc-40');
-  assert.match(publication.adaptations, /selected.*deduplicated.*rebased.*normalized/i);
+  assert.equal(publication.base, '2025 = 100');
+  assert.match(publication.adaptations, /selected.*deduplicated.*normalized/i);
   const months = Object.keys(publication.indices);
-  assert.equal(months[0], '2016-01');
+  assert.equal(months[0], '2015-02');
   assert.deepEqual(months, months.toSorted());
   for (let index = 1; index < months.length; index += 1) {
     const previous = new Date(`${months[index - 1]}-01T00:00:00Z`);

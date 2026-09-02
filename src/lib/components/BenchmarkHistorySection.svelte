@@ -55,7 +55,7 @@
         Each point compares its value with the value {periods[period].description} earlier and annualizes the return.
       {/if}
       {#if controller.settings.returnMode === 'real'}
-        &#32;These figures are inflation-adjusted; intervals before Belgian CPI coverage begins in January 2016 are omitted.
+        &#32;These figures are inflation-adjusted.
       {/if}
     </p>
     {#if hasProvisionalTail}

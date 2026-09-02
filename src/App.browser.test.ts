@@ -342,7 +342,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(mode.getByRole('button', { name: 'Nominal' })).toHaveAttribute('aria-pressed', 'true');
     await expect.element(page.getByRole('link', { name: 'Source Statbel' })).toHaveAttribute('href', 'https://bestat.statbel.fgov.be/bestat/api/views/86586e27-90ac-47c6-87ce-64b63194e605');
     await expect.element(page.getByRole('link', { name: 'CC BY 4.0' })).toHaveAttribute('href', 'https://statbel.fgov.be/en/cc-40');
-    await expect.element(page.getByText(/adapted by selecting the all-items series, deduplicating, rebasing, and normalizing monthly observations/)).toBeVisible();
+    await expect.element(page.getByText(/adapted by selecting the all-items series, deduplicating, and normalizing monthly observations/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Load example' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
@@ -382,14 +382,15 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByLabelText('Portfolio value in euro for CSH2 and your account using the same external cash flows')).toBeVisible();
   });
 
-  it('explains unavailable full-period real metrics before CPI coverage', async () => {
+  it('does not show the obsolete pre-coverage caveat in real results', async () => {
     localStorage.setItem('csh2-belgium-flows-v1', JSON.stringify([{ date: '2015-04-01', type: 'inflow', amount: '5000', interestPayment: false }]));
     localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ returnMode: 'real' }));
     render(App);
 
-    await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toBeVisible();
+    await expect.element(page.getByText(/^Inflation-adjusted returns use Belgian CPI\./)).toBeVisible();
+    await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toHaveLength(0);
     const metric = page.getByText('CSH2 annualized money-weighted return').element().closest('article')!;
-    expect(metric.querySelector('strong')!.textContent).toBe('—');
+    expect(metric.querySelector('strong')!.textContent).not.toBe('—');
   });
 
   it('keeps the global return control and Statbel notice within a narrow viewport', async () => {

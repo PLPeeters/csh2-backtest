@@ -34,7 +34,7 @@ export function assertValidCpiEnvelope(value: unknown): CpiEnvelope {
   }
   if (!candidate.indices || typeof candidate.indices !== 'object' || !Object.keys(candidate.indices).length) throw new Error('The published Belgian CPI data is invalid: indices are required.');
   const months = Object.keys(candidate.indices).sort();
-  if (months[0] !== '2016-01') throw new Error(`The published Belgian CPI data is invalid: coverage must begin at 2016-01, found ${months[0]}.`);
+  if (months[0] !== '2015-02') throw new Error(`The published Belgian CPI data is invalid: coverage must begin at 2015-02, found ${months[0]}.`);
   for (const [index, month] of months.entries()) {
     const observation = candidate.indices[month];
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !Number.isFinite(observation) || observation <= 0) throw new Error(`The published Belgian CPI data is invalid at ${month}.`);

@@ -44,10 +44,10 @@ describe('Belgian CPI loading', () => {
     await expect(loadCpi(new Response('', { status: 500 }))).rejects.toThrow(/Belgian CPI.*HTTP 500/);
   });
 
-  it('rejects histories that do not start in January 2016 or contain a monthly gap', async () => {
+  it('rejects histories that do not start in February 2015 or contain a monthly gap', async () => {
     const lateStart = structuredClone(cpi);
-    delete (lateStart as { indices: Record<string, number> }).indices['2016-01'];
-    await expect(loadCpi(new Response(JSON.stringify(lateStart), { status: 200 }))).rejects.toThrow(/coverage must begin at 2016-01/);
+    delete (lateStart as { indices: Record<string, number> }).indices['2015-02'];
+    await expect(loadCpi(new Response(JSON.stringify(lateStart), { status: 200 }))).rejects.toThrow(/coverage must begin at 2015-02/);
 
     const gapped = structuredClone(cpi);
     delete (gapped as { indices: Record<string, number> }).indices['2020-06'];

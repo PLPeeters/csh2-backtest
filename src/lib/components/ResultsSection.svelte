@@ -69,7 +69,7 @@
     </div>
     {#if returnMode === 'real'}
       <p class="real-coverage-note">
-        Inflation-adjusted returns use Belgian CPI. A metric is shown as — when its full measurement interval begins before CPI coverage in January 2016; historical charts show only fully covered intervals.
+        Inflation-adjusted returns use Belgian CPI.
         {#if valuationCpi?.status === 'extrapolated'}
           &#32;The latest portion is provisional and extrapolated from trailing 12-month observed inflation after {valuationCpi.lowerMonth}.
         {/if}
