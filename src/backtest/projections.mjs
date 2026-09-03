@@ -13,6 +13,19 @@ function projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent) {
   return { valuation, dailyGrowthFactor, csh2AnnualRatePercent };
 }
 
+/** Builds daily synthetic CSH2 closes after the latest observed valuation. */
+export function buildProjectedPrices(prices, valuationDate, throughDate, csh2AnnualRatePercent) {
+  if (typeof throughDate !== 'string' || throughDate <= valuationDate) return undefined;
+  const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
+  if (!projectionRate) return undefined;
+  const projectedPrices = { ...prices };
+  for (let day = 1; day <= daysBetween(valuationDate, throughDate); day += 1) {
+    const date = dateAfter(valuationDate, day);
+    projectedPrices[date] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** day };
+  }
+  return { prices: projectedPrices, csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent };
+}
+
 /** Finds when net CSH2 value catches a constant annual target rate after transaction and gain taxes. */
 export function estimateConstantRateMatch(csh2AnnualRatePercent, targetAnnualRatePercent, valuationDate, { maximumProjectionDays = 36525, ...taxOptions } = {}) {
   if (![csh2AnnualRatePercent, targetAnnualRatePercent].every(Number.isFinite) || csh2AnnualRatePercent <= -100 || targetAnnualRatePercent <= -100) return undefined;
@@ -275,18 +288,17 @@ export function buildMarketReturnProjection(flows, prices, rates, valuationDate,
   const futurePremiums = fidelityPremiums.filter((premium) => premium.earnedDate > valuationDate).toSorted((left, right) => left.earnedDate.localeCompare(right.earnedDate));
   if (!futurePremiums.length) return undefined;
   const throughDate = futurePremiums.at(-1).earnedDate;
-  const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
-  if (!projectionRate) return undefined;
+  const projectionData = buildProjectedPrices(prices, valuationDate, throughDate, csh2AnnualRatePercent);
+  if (!projectionData) return undefined;
   const externalInflows = flows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
   if (!externalInflows) return undefined;
   const outflows = flows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
   const projectionOptions = { ...options, accruedBaseInterest: 0 };
-  const projectedPrices = { ...prices };
+  const projectedPrices = projectionData.prices;
   const csh2 = [];
   const projectionDays = daysBetween(valuationDate, throughDate);
   for (let day = 0; day <= projectionDays; day += 1) {
     const date = dateAfter(valuationDate, day);
-    if (day) projectedPrices[date] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** day };
     const result = runBacktest(flows, projectedPrices, date, projectionOptions);
     csh2.push({ date, value: ((result.netLiquidationValue + outflows - externalInflows) / externalInflows) * 100 });
   }
@@ -306,7 +318,7 @@ export function buildMarketReturnProjection(flows, prices, rates, valuationDate,
     csh2,
     overnight,
     throughDate,
-    csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent,
+    csh2AnnualRatePercent: projectionData.csh2AnnualRatePercent,
     overnightRatePercent: overnightPortfolio.latestRate
   };
 }

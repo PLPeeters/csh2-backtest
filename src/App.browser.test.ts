@@ -11,6 +11,31 @@ import type { CalculationSettings, CalculationView, MarketDataBundle } from './l
 describe('CSH2 application inputs', () => {
   beforeEach(() => localStorage.clear());
 
+  it('retains the last historical result when switching configuration tabs', async () => {
+    render(App);
+    await page.getByRole('tab', { name: 'Historical savings rates' }).click();
+    const historicalPanel = document.getElementById('historical-backtest-panel')!;
+    await expect.element(page.getByRole('button', { name: 'Add rate change', exact: true })).toBeVisible();
+    const calculationSettings = historicalPanel.querySelector('.assumptions')!;
+    const settingsGrid = calculationSettings.querySelector('.settings-grid')!;
+    expect(settingsGrid.querySelector('#historical-backtest-end-date')).toBeTruthy();
+    expect(settingsGrid.querySelector('.broker-transaction-fee')).toBeTruthy();
+    expect(settingsGrid.querySelector('.tax-exemption')).toBeTruthy();
+    const historicalAction = historicalPanel.querySelector('.action-row')!;
+    expect(calculationSettings.compareDocumentPosition(historicalAction) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await page.getByLabelText('Rate 1 effective date', { exact: true }).fill('2020-01-02');
+    await page.getByLabelText('End date', { exact: true }).fill('2021-01-04');
+    await page.getByLabelText('Rate 1 base annual rate (%)', { exact: true }).fill('1');
+    await page.getByLabelText('Rate 1 fidelity premium (%)', { exact: true }).fill('0.5');
+    await page.getByRole('button', { name: 'Calculate historical savings', exact: true }).click();
+    await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Current account backtest' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Cash flows' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Historical savings rates' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+  });
+
   it('omits zero-valued units from durations', () => {
     expect(duration('2026-08-13', '2026-09-19')).toBe('1 month and 6 days');
     expect(duration('2026-08-13', '2027-08-20')).toBe('1 year and 7 days');

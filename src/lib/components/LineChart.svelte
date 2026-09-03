@@ -4,7 +4,7 @@
   import { onMount, untrack } from 'svelte';
   import type { BenchmarkSeries, ChartPoint, ComparisonSeries, CpiEnvelope } from '../types';
   type ChartSeries = BenchmarkSeries | ComparisonSeries;
-  let { data, ariaLabel, from, to, unit = 'percent' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro'; cpiIndices?: CpiEnvelope['indices'] } = $props();
+  let { data, ariaLabel, from, to, unit = 'percent', accountLabel = 'Your account' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro'; accountLabel?: string; cpiIndices?: CpiEnvelope['indices'] } = $props();
   let host: HTMLDivElement;
   let chart: IChartApi | undefined;
   let csh2Series: ISeriesApi<'Line'> | undefined;
@@ -69,7 +69,7 @@
     const series = [
       { color: '#1d6a54', label: 'CSH2', points: [loadedData.csh2, projected?.csh2 ?? []], chartSeries: [csh2Series, projectedCsh2Series] },
       { color: '#c7943c', label: '€STR', points: [loadedData.overnight, projected?.overnight ?? []], chartSeries: [overnightSeries, projectedOvernightSeries] },
-      { color: '#3867a8', label: 'Your account', points: ['account' in loadedData ? loadedData.account : [], projected?.account ?? []], chartSeries: [accountSeries, projectedAccountSeries] }
+      { color: '#3867a8', label: accountLabel, points: ['account' in loadedData ? loadedData.account : [], projected?.account ?? []], chartSeries: [accountSeries, projectedAccountSeries] }
     ];
     const hasCrosshair = param?.time !== undefined && param.point !== undefined && param.point.x >= 0 && param.point.y >= 0;
     const latest = latestPoint(...series.flatMap((item) => item.points));
@@ -79,7 +79,7 @@
       const crosshairValue = hasCrosshair && hasPointAtCrosshair
         ? chartSeries.map((item) => valueFromChartPoint(param?.seriesData.get(item))).find((item): item is number => item !== undefined)
         : undefined;
-      const carriedAccountValue = crosshairValue === undefined && label === 'Your account' && typeof param?.time === 'string'
+      const carriedAccountValue = crosshairValue === undefined && label === accountLabel && typeof param?.time === 'string'
         ? latestPointAtOrBefore(param.time, ...points)?.value
         : undefined;
       const value = crosshairValue ?? carriedAccountValue ?? (!hasCrosshair ? latestPoint(...points)?.value : undefined);

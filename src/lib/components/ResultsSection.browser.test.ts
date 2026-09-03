@@ -71,6 +71,26 @@ const renderReturns = async (csh2: number, account: number) => {
   };
 };
 
+const viewForBaselineDetails = (): CalculationView => {
+  const base = viewForReturns(-0.1, 0.05);
+  const holding = { date: '2026-03-01', days: 59 };
+  return {
+    ...base,
+    result: {
+      ...base.result,
+      missedAmount: -10,
+      breakEvenEstimate: { date: '2026-04-01', days: 90, csh2AnnualRatePercent: 2 },
+      observedHoldingPeriods: { from: '2026-01-01', breakEven: holding, matchOvernight: { date: '2026-05-01', days: 120 } },
+      fidelityPremiumAssessments: [{
+        id: 'detail', baseAmount: 100, earnedDate: '2026-01-01', finalPayoutAmount: 5,
+        currentPeriodPreferred: 'either', currentPeriodDifference: 0, immediateValue: 100, waitingValue: 100,
+        recommendation: 'keep in account', transferAllocations: [], csh2AnnualRatePercent: 2,
+        nextYearCsh2Value: 110, nextYearAccountValue: 100, nextYearBestAccountValue: 100
+      }]
+    }
+  };
+};
+
 const backgroundColor = (element: Element) => element.ownerDocument.defaultView!.getComputedStyle(element).backgroundColor;
 
 describe('annualized money-weighted return cards', () => {
@@ -127,5 +147,27 @@ describe('annualized money-weighted return cards', () => {
     expect(cards.account.classList.contains('comparison-secondary')).toBe(false);
     expect(backgroundColor(cards.csh2)).toBe('rgb(29, 79, 62)');
     expect(backgroundColor(cards.account)).toBe('rgb(29, 79, 62)');
+  });
+});
+
+describe('current result content parity', () => {
+  it('keeps baseline catch-up and fidelity timing details', async () => {
+    await render(ResultsSection, { controller: { view: viewForBaselineDetails() } as unknown as BacktestController });
+    await expect.element(page.getByText(/Estimated catch-up with your account in/)).toBeVisible();
+    await expect.element(page.getByText('(using the selected CSH2 rate scenario of 2%)', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('Best savings account effectively equal', { exact: true })).toBeVisible();
+    await expect.element(page.getByText(/Each row is one cash-transfer recommendation; legal tranche allocation is handled internally/)).toBeVisible();
+    const nextYear = page.getByText('Best savings account effectively equal', { exact: true }).element().closest('td')!;
+    expect(nextYear.classList.contains('comparison-winner')).toBe(true);
+  });
+
+  it('places Savings account comparison before the transaction ledger', async () => {
+    await render(ResultsSection, { controller: { view: viewForBaselineDetails() } as unknown as BacktestController });
+    const performance = page.getByRole('heading', { name: 'Cash-flow-neutral performance' }).element().closest('section')!;
+    const comparison = page.getByRole('heading', { name: 'Fidelity premium timing' }).element().closest('section')!;
+    const ledger = page.getByRole('heading', { name: 'Transaction ledger' }).element().closest('section')!;
+    expect(performance.compareDocumentPosition(comparison) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(comparison.compareDocumentPosition(ledger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(getComputedStyle(comparison).marginTop).toBe('20px');
   });
 });

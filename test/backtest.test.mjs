@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildReturnProjection, buildTimeWeightedReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, latestAnnualInflation, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, realAnnualizedReturn, realAnnualRate, realGrowthFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedPrices, buildReturnProjection, buildTimeWeightedReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, latestAnnualInflation, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, realAnnualizedReturn, realAnnualRate, realGrowthFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -469,6 +469,15 @@ test('projects all cumulative-return series through multiple fidelity premiums',
   ]);
   assert.equal(projection.overnightRatePercent, 3);
   assert.equal(projection.csh2AnnualRatePercent, 8);
+});
+
+test('builds a constant-rate price path from the latest observed close', () => {
+  const projection = buildProjectedPrices({ '2026-01-02': 100, '2026-02-02': 110 }, '2026-02-02', '2026-02-04', 36.5);
+  assert.ok(projection);
+  assert.equal(projection.prices['2026-02-02'], 110);
+  assert.equal(projection.prices['2026-02-03'].close, 110 * 1.365 ** (1 / 365));
+  assert.equal(projection.prices['2026-02-04'].close, 110 * 1.365 ** (2 / 365));
+  assert.equal(buildProjectedPrices({ '2026-02-02': 110 }, '2026-02-02', '2026-02-02', 36.5), undefined);
 });
 
 test('extends each observed TWR endpoint continuously through the value projection', () => {

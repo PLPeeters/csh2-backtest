@@ -65,7 +65,7 @@
 </section>
 <section class="input-section cash-flow-section" aria-label="Cash-flow entries">
   <details class="cash-flow-disclosure" open>
-    <summary><span>Cash-flow entries</span><small>{controller.flows.length} {controller.flows.length === 1 ? 'entry' : 'entries'}</small></summary>
+    <summary class="disclosure-summary"><span>Cash-flow entries</span><small>{controller.flows.length} {controller.flows.length === 1 ? 'entry' : 'entries'}</small></summary>
     <div class="cash-flow-disclosure-content">
       <div class="controls clear-data-controls"><button class="quiet" type="button" onclick={() => { if (confirm('Clear all saved cash flows, settings, pending CSV data, and results? This cannot be undone.')) { resetCsv(); controller.clear(); } }}>Clear all data</button></div>
       <div class="flow-head" aria-hidden="true"><span>Date</span><span>Direction</span><span>Net amount (€)</span><span>Interest</span><span></span></div>

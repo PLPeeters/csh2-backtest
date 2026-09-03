@@ -22,6 +22,11 @@ h3 { margin-bottom: 0; font-size: 1rem; letter-spacing: -.01em; }
 .panel { border: 1px solid #d8dfda; border-radius: 10px; background: #fff; padding: 28px; }
 .input-panel { border-top: 3px solid #265d4a; }
 .input-section-container { margin-bottom: 32px; }
+.setup-tabs { display: flex; width: 100%; overflow-x: auto; margin-bottom: 16px; border: 1px solid #cbd7d0; border-radius: 7px; background: #fff; }
+.setup-tabs button { flex: 1 1 0; min-height: 38px; border: 0; border-radius: 0; padding: 0 11px; background: transparent; color: #39574b; font-size: .8rem; white-space: nowrap; }
+.setup-tabs button + button { border-left: 1px solid #cbd7d0; }
+.setup-tabs button:hover { background: #f1f5f2; }
+.setup-tabs button[aria-selected="true"] { background: #1d4f3e; color: #fff; }
 .benchmark-section { margin-bottom: 32px; }
 .benchmark-history-section { margin-bottom: 32px; }
 .tax-regime-bar { position: sticky; z-index: 5; top: 12px; display: flex; align-items: stretch; justify-content: center; gap: 14px; margin: 0 0 24px; border: 1px solid #cbd7d0; border-radius: 9px; padding: 12px 14px; background: rgb(247 248 247 / 94%); box-shadow: 0 5px 18px rgb(23 36 31 / 8%); backdrop-filter: blur(10px); }
@@ -120,8 +125,11 @@ h3 { margin-bottom: 0; font-size: 1rem; letter-spacing: -.01em; }
 .flow-head { color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding-bottom: 8px; }
 .flow-row { margin-bottom: 10px; }
 .cash-flow-disclosure { border: 1px solid #d8e1db; border-radius: 8px; background: #fbfcfb; }
-.cash-flow-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; color: #285747; cursor: pointer; font-size: .9rem; font-weight: 700; list-style-position: inside; }
-.cash-flow-disclosure summary::marker { color: #597067; }
+.cash-flow-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; color: #285747; cursor: pointer; font-size: .9rem; font-weight: 700; }
+.disclosure-summary { list-style: none; }
+.disclosure-summary::before { width: 0; height: 0; flex: 0 0 auto; margin-right: 2px; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid #597067; content: ''; transition: transform .15s ease; }
+.cash-flow-disclosure[open] > .disclosure-summary::before { transform: rotate(90deg); }
+.disclosure-summary > span { flex: 1; }
 .cash-flow-disclosure summary small { color: #617169; font-size: .78rem; font-weight: 600; }
 .cash-flow-disclosure[open] summary { border-bottom: 1px solid #d8e1db; }
 .cash-flow-disclosure-content { padding: 14px; }
@@ -161,7 +169,8 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .flow-field-label, .premium-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 .premium-controls { justify-content: center; margin-top: 14px; }
 .premium-help { margin-top: 14px; }
-.setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-top: 16px; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-top: 16px; }
+.historical-end-date { width: min(100%, 220px); }
 .tax-exemption { display: flex; align-items: center; gap: 9px; color: #39574b; font-size: .875rem; font-weight: 600; line-height: 1.4; }
 .tax-exemption input { width: 17px; min-height: 17px; accent-color: #24644d; }
 .accrued-interest, .broker-transaction-fee, .account-interest-rate { display: block; color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -177,6 +186,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .stale-results { margin: 12px 0 0; border-left: 3px solid #b48432; background: #fff9e8; padding: 10px 12px; color: #6b511b; font-size: .875rem; line-height: 1.45; }
 
 #results { margin-top: 42px; }
+.comparison-results { width: 100%; min-width: 0; overflow: hidden; }
 .result-heading { margin-bottom: 18px; }
 .metrics { display: grid; min-width: 0; gap: 12px; margin: 0 0 20px; }
 .metrics > * { min-width: 0; }
@@ -203,7 +213,7 @@ button:disabled, button:disabled:hover { border-color: #cbd7d0; background: #e5e
 .metric p { margin-bottom: 12px; color: #50645a; font-size: .8rem; }
 .metric strong { display: block; font-size: 1.4rem; letter-spacing: -.03em; }
 .metric small { display: block; margin-top: 8px; color: #63746b; font-size: .78rem; line-height: 1.35; }
-.fidelity-assessments { min-width: 0; overflow: hidden; padding-bottom: 14px; }
+.fidelity-assessments { min-width: 0; margin-top: 20px; overflow: hidden; padding-bottom: 14px; }
 .fidelity-assessments-heading { align-items: flex-start; padding-bottom: 12px; }
 .fidelity-timing-table { margin-bottom: 0; font-size: .8rem; }
 .fidelity-timing-table th, .fidelity-timing-table td { padding: 9px 8px; }
@@ -330,7 +340,7 @@ th { color: #60756d; font-size: .68rem; letter-spacing: .08em; text-transform: u
   .panel { padding: 20px; }
   .section-title, .result-heading { align-items: flex-start; flex-direction: column; }
   .section-title { gap: 12px; }
-  .csv-map-grid, .setting-grid { grid-template-columns: 1fr; }
+  .csv-map-grid, .settings-grid { grid-template-columns: 1fr; }
   .benchmark-account-rate, .benchmark-account-rate-fields { width: 100%; }
   .methodology-dialog-header { padding: 20px; }
   .methodology-dialog-content { padding: 0 20px 20px; }

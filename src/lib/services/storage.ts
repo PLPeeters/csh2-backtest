@@ -1,7 +1,9 @@
 import type { CalculationSettings, CashFlowDraft, FidelityPremiumDraft, StoredState } from '../types';
+import type { HistoricalRateRow, HistoricalSavingsState } from './historical-savings';
 
 export const flowStorageKey = 'csh2-belgium-flows-v1';
 export const settingsStorageKey = 'csh2-belgium-settings-v1';
+export const historicalSavingsStorageKey = 'csh2-belgium-historical-savings-v1';
 
 let flowIdSequence = 0;
 export function createFlowId() {
@@ -113,6 +115,26 @@ export function saveFlows(storage: Storage, flows: CashFlowDraft[]) {
 
 export function saveSettings(storage: Storage, settings: CalculationSettings) {
   storage.setItem(settingsStorageKey, JSON.stringify(settings));
+}
+
+export function loadHistoricalSavingsState(storage: Storage, today = new Date().toISOString().slice(0, 10)): HistoricalSavingsState {
+  const value = readJson(storage, historicalSavingsStorageKey);
+  if (!value || typeof value !== 'object') return { rates: [{ id: `historical-rate-${Date.now().toString(36)}`, date: today, baseRate: '', fidelityPremium: '' }], endDate: today };
+  const candidate = value as Record<string, unknown>;
+  const rates = Array.isArray(candidate.rates) ? candidate.rates.flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.date !== 'string') return [];
+    const baseRate = typeof row.baseRate === 'string' || typeof row.baseRate === 'number' ? String(row.baseRate) : '';
+    const fidelityPremium = typeof row.fidelityPremium === 'string' || typeof row.fidelityPremium === 'number' ? String(row.fidelityPremium) : '';
+    return [{ id: typeof row.id === 'string' ? row.id : `historical-rate-${index}-${Date.now().toString(36)}`, date: row.date, baseRate, fidelityPremium } satisfies HistoricalRateRow];
+  }) : [];
+  const endDate = typeof candidate.endDate === 'string' ? candidate.endDate : today;
+  return { rates: rates.length ? rates : [{ id: `historical-rate-${Date.now().toString(36)}`, date: today, baseRate: '', fidelityPremium: '' }], endDate };
+}
+
+export function saveHistoricalSavingsState(storage: Storage, state: HistoricalSavingsState) {
+  storage.setItem(historicalSavingsStorageKey, JSON.stringify(state));
 }
 
 export function clearStoredState(storage: Storage) {
