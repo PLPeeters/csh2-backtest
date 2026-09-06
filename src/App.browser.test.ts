@@ -1,4 +1,4 @@
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
 import './app.css';
@@ -11,11 +11,202 @@ import type { CalculationSettings, CalculationView, MarketDataBundle } from './l
 describe('CSH2 application inputs', () => {
   beforeEach(() => localStorage.clear());
 
+  it('places best-account inputs in the future outlook beside projections', async () => {
+    render(App);
+    const currentPanel = document.getElementById('current-backtest-panel')!;
+    const cashFlows = currentPanel.querySelector('.cash-flow-section')!;
+    const calculationSettings = currentPanel.querySelector('.assumptions')!;
+    expect(currentPanel.querySelector('.best-savings-account-inputs')).toBeNull();
+    expect(cashFlows.compareDocumentPosition(calculationSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
+    const bestAccount = document.querySelector('#future-result-panel .best-savings-account-inputs')!;
+    expect(bestAccount).toBeTruthy();
+    expect(bestAccount.compareDocumentPosition(document.querySelector('#future-result-panel .benchmark-section')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps the shared savings amount with global assumptions before benchmark context', async () => {
+    render(App);
+    const rateStrip = document.querySelector('.rate-strip')!;
+    const assumptions = page.getByRole('complementary', { name: 'Global assumptions' }).element();
+    const benchmark = document.querySelector('.secondary-analysis')!;
+    const workspace = document.querySelector('.primary-workspace')!;
+    const savingsInput = page.getByLabelText('Total savings amount (€)', { exact: true }).element();
+    const savingsPicker = savingsInput.closest('.global-savings-picker')!;
+    const savingsHelp = page.getByText('Affects CGT-exemption calculations, minimum holding periods, account comparison, and benchmark returns.', { exact: true });
+    const helpPopover = savingsPicker.querySelector('.global-savings-help-popover') as HTMLDetailsElement;
+
+    expect(savingsInput.closest('.tax-regime-bar')).toBe(assumptions);
+    expect(document.querySelector('.benchmark-history-section .global-savings-picker')).toBeNull();
+    expect(assumptions.compareDocumentPosition(benchmark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(benchmark.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(getComputedStyle(benchmark).marginBottom).toBe('16px');
+    expect(savingsPicker.querySelector(':scope > .global-savings-help')).toBeNull();
+    expect(helpPopover.open).toBe(false);
+    const helpTrigger = page.getByLabelText('Why total savings amount matters');
+    await expect.element(helpTrigger).toBeVisible();
+    await helpTrigger.click();
+    await expect.element(savingsHelp).toBeVisible();
+    expect(helpPopover.open).toBe(true);
+    const desktopHelpBounds = savingsHelp.element().getBoundingClientRect();
+    const desktopInputBounds = savingsInput.getBoundingClientRect();
+    expect(desktopHelpBounds.top).toBeGreaterThanOrEqual(desktopInputBounds.bottom);
+    await helpTrigger.click();
+    expect(helpPopover.open).toBe(false);
+    helpTrigger.element().focus();
+    expect(document.activeElement).toBe(helpTrigger.element());
+    await userEvent.keyboard('{Enter}');
+    expect(helpPopover.open).toBe(true);
+    await userEvent.keyboard('{Enter}');
+    expect(helpPopover.open).toBe(false);
+    await userEvent.unhover(helpTrigger.element());
+    await userEvent.hover(helpTrigger.element());
+    expect(helpPopover.open).toBe(true);
+    await userEvent.hover(savingsHelp.element());
+    expect(helpPopover.open).toBe(true);
+    await userEvent.unhover(helpTrigger.element());
+    expect(helpPopover.open).toBe(false);
+    try {
+      for (const width of [1024, 390]) {
+        await page.viewport(width, 720);
+        await helpTrigger.click();
+        const helpBounds = savingsHelp.element().getBoundingClientRect();
+        const inputBounds = savingsInput.getBoundingClientRect();
+        expect(helpBounds.left).toBeGreaterThanOrEqual(0);
+        expect(helpBounds.right).toBeLessThanOrEqual(document.documentElement.clientWidth);
+        expect(helpBounds.top).toBeGreaterThanOrEqual(inputBounds.bottom);
+        await helpTrigger.click();
+      }
+    } finally {
+      await page.viewport(1280, 720);
+    }
+    expect(rateStrip.compareDocumentPosition(assumptions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('evenly fills the global selector groups', async () => {
+    render(App);
+    for (const name of ['CSH2 gain tax regime', 'CSH2 rate', 'Global return presentation']) {
+      const buttons = [...page.getByRole('group', { name }).element().querySelectorAll('button')] as HTMLElement[];
+      const widths = buttons.map((button) => button.getBoundingClientRect().width);
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('aligns the Returns picker with the savings amount input', async () => {
+    render(App);
+    const returnPicker = page.getByRole('group', { name: 'Global return presentation' }).element();
+    const savingsInput = page.getByLabelText('Total savings amount (€)', { exact: true }).element();
+
+    try {
+      for (const width of [1280, 1024]) {
+        await page.viewport(width, 720);
+        const returnBounds = returnPicker.getBoundingClientRect();
+        const savingsBounds = savingsInput.getBoundingClientRect();
+        expect(Math.abs(returnBounds.top - savingsBounds.top)).toBeLessThanOrEqual(1);
+        expect(Math.abs(returnBounds.bottom - savingsBounds.bottom)).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
+  it('supports roving keyboard focus across analysis tabs', async () => {
+    render(App);
+    const outcome = document.getElementById('outcome-result-tab') as HTMLButtonElement;
+    const future = document.getElementById('future-result-tab') as HTMLButtonElement;
+    expect(outcome.tabIndex).toBe(0);
+    expect(future.tabIndex).toBe(-1);
+    outcome.focus();
+    outcome.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(future.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(future);
+    future.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(outcome.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(outcome);
+  });
+
+  it('focuses the current-account base rate from the rate snapshot', async () => {
+    render(App);
+    await page.getByRole('button', { name: 'Edit rate', exact: true }).click();
+    expect((document.activeElement as HTMLInputElement | null)?.id).toBe('current-account-base-rate');
+  });
+
+  it('shows the CSH2 model uncertainty and opens its methodology from the rate snapshot', async () => {
+    render(App);
+    const currentRates = page.getByRole('region', { name: 'Current rates' });
+    await expect.element(currentRates.getByText(/Estimated CSH2/)).toBeVisible();
+    await expect.element(currentRates.getByText(/±\s*0[,.]11 p\.p\./)).toBeVisible();
+    await expect.element(currentRates.getByText('After tax', { exact: true })).toBeVisible();
+    const csh2Estimate = currentRates.getByText(/Estimated CSH2/).element().closest('.rate-strip-csh2')!;
+    const csh2Label = csh2Estimate.querySelector('.rate-strip-label')!;
+    const methodologyButton = currentRates.getByRole('button', { name: 'How estimated CSH2 is calculated' }).element();
+    const grossEstimateBeforeTaxChange = csh2Estimate.querySelector('.rate-strip-value')!.textContent;
+    const afterTaxEstimate = csh2Estimate.querySelector('.rate-strip-after-tax-value')!;
+    const afterTaxEstimateBeforeTaxChange = afterTaxEstimate.textContent;
+    expect(csh2Label.contains(methodologyButton)).toBe(true);
+    expect(csh2Estimate.querySelector('.rate-strip-value')?.contains(methodologyButton)).toBe(false);
+    await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '30% Reynders Tax' }).click();
+    await expect.element(page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '30% Reynders Tax' })).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => afterTaxEstimate.textContent).not.toBe(afterTaxEstimateBeforeTaxChange);
+    expect(csh2Estimate.querySelector('.rate-strip-value')!.textContent).toBe(grossEstimateBeforeTaxChange);
+    await currentRates.getByRole('button', { name: 'How estimated CSH2 is calculated' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'How we estimate today’s CSH2 return' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close methodology' }).click();
+  });
+
+  it('keeps gain-tax choices fully visible when the workspace stacks', async () => {
+    try {
+      render(App);
+      for (const width of [900, 390]) {
+        await page.viewport(width, 720);
+        const workspace = document.querySelector('.primary-workspace') as HTMLElement;
+        expect(getComputedStyle(workspace).gridTemplateColumns.split(' ')).toHaveLength(1);
+        const picker = page.getByRole('group', { name: 'CSH2 gain tax regime' }).element() as HTMLElement;
+        const bounds = picker.getBoundingClientRect();
+        const buttons = [...picker.querySelectorAll('button')];
+        expect(getComputedStyle(picker).display).toBe('flex');
+        expect(getComputedStyle(picker).overflow).toBe('visible');
+        expect(buttons.every((button) => {
+          const buttonBounds = button.getBoundingClientRect();
+          return buttonBounds.left >= bounds.left && buttonBounds.right <= bounds.right && button.scrollWidth <= button.clientWidth;
+        })).toBe(true);
+      }
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
+  it('keeps gain-tax choices contained at the intermediate assumptions breakpoint', async () => {
+    try {
+      render(App);
+      await page.viewport(1024, 720);
+      const assumptions = page.getByRole('complementary', { name: 'Global assumptions' }).element() as HTMLElement;
+      const picker = page.getByRole('group', { name: 'CSH2 gain tax regime' }).element() as HTMLElement;
+      const ratePicker = page.getByRole('group', { name: 'CSH2 rate' }).element() as HTMLElement;
+      const viewportWidth = document.documentElement.clientWidth;
+      const pickerBounds = picker.getBoundingClientRect();
+      const assumptionBounds = assumptions.getBoundingClientRect();
+      expect(assumptionBounds.left).toBeGreaterThanOrEqual(0);
+      expect(assumptionBounds.right).toBeLessThanOrEqual(viewportWidth);
+      expect(Math.abs(picker.getBoundingClientRect().height - ratePicker.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
+      expect(getComputedStyle(picker).display).toBe('flex');
+      expect(getComputedStyle(picker).overflow).toBe('visible');
+      expect([...picker.querySelectorAll('button')].every((button) => {
+        const buttonBounds = button.getBoundingClientRect();
+        return buttonBounds.left >= pickerBounds.left && buttonBounds.right <= pickerBounds.right && button.scrollWidth <= button.clientWidth;
+      })).toBe(true);
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
   it('retains the last historical result when switching configuration tabs', async () => {
     render(App);
     await page.getByRole('tab', { name: 'Historical savings rates' }).click();
+    await expect.element(page.getByRole('tablist', { name: 'Analysis view' })).toHaveLength(0);
     const historicalPanel = document.getElementById('historical-backtest-panel')!;
-    await expect.element(page.getByRole('button', { name: 'Add rate change', exact: true })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /Add rate change/ })).toBeVisible();
     const calculationSettings = historicalPanel.querySelector('.assumptions')!;
     const settingsGrid = calculationSettings.querySelector('.settings-grid')!;
     expect(settingsGrid.querySelector('#historical-backtest-end-date')).toBeTruthy();
@@ -52,6 +243,7 @@ describe('CSH2 application inputs', () => {
     localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ accountInterestRate: '2.5' }));
     render(App);
 
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     await expect.element(page.getByLabelText('Best available base annual rate (%)', { exact: true })).toHaveValue(2.5);
     await expect.element(page.getByLabelText('Best available fidelity premium (%)', { exact: true })).toHaveValue(null);
   });
@@ -59,6 +251,9 @@ describe('CSH2 application inputs', () => {
   it('loads defaults, adds flows, and restores the documented example', async () => {
     render(App);
     await expect.element(page.getByRole('heading', { name: 'CSH2 backtester' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Minimum holding periods', exact: true })).toBeVisible();
+    await page.getByText('02 · Benchmark context', { exact: true }).click();
     await expect.element(page.getByRole('heading', { name: 'Backward annualized returns · 1Y' })).toBeVisible();
     const holdingTimeline = page.getByRole('img', { name: /Minimum holding periods in months/ });
     await expect.element(holdingTimeline).toBeVisible();
@@ -71,10 +266,15 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText('Enter valid best-available savings rates to compare them with the current CSH2 projection.')).toBeVisible();
     await expect.element(holdingTimeline.getByText('Break even', { exact: true })).toBeVisible();
     await expect.element(holdingTimeline.getByText('Match €STR', { exact: true })).toBeVisible();
-    const estimatePicker = page.getByRole('group', { name: 'CSH2 rate scenario' });
+    const estimatePicker = page.getByRole('group', { name: 'CSH2 rate' });
     await expect.element(estimatePicker.getByRole('button', { name: 'Base' })).toHaveAttribute('aria-pressed', 'true');
+    const headerRates = page.getByRole('region', { name: 'Current rates' });
+    const headerEstimate = headerRates.getByText(/Estimated CSH2/).element().closest('.rate-strip-csh2')!;
+    const headerEstimateBeforeScenarioChange = headerEstimate.textContent;
+    expect(headerEstimateBeforeScenarioChange).not.toMatch(/scenario/i);
     await estimatePicker.getByRole('button', { name: 'Cautious' }).click();
     await expect.element(estimatePicker.getByRole('button', { name: 'Cautious' })).toHaveAttribute('aria-pressed', 'true');
+    expect(headerEstimate.textContent).toBe(headerEstimateBeforeScenarioChange);
     await expect.element(page.getByText(/^At the cautious estimated CSH2 rate/)).toBeVisible();
     await expect.element(page.getByText(/Assumes CSH2 stays near its/)).toHaveLength(0);
     const currentRates = page.getByLabelText('Current rates used');
@@ -83,7 +283,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(currentRates.getByText('Post-tax estimated CSH2 rate', { exact: false })).toBeVisible();
     expect(currentRates.element().textContent).not.toContain('(nominal)');
     await expect.element(currentRates.getByText(/Base .* pp/)).toHaveLength(0);
-    await page.getByRole('button', { name: 'How estimated CSH2 is calculated' }).click();
+    await currentRates.getByRole('button', { name: 'How estimated CSH2 is calculated' }).click();
     const methodology = page.getByRole('dialog', { name: 'How we estimate today’s CSH2 return' });
     await expect.element(methodology).toBeVisible();
     const methodologyElement = methodology.element() as HTMLDialogElement;
@@ -203,8 +403,32 @@ describe('CSH2 application inputs', () => {
     await expect.element(calculate).toBeEnabled();
   });
 
-  it('marks inflows as interest payments and clears the marker for outflows', async () => {
+  it('uses signed amounts for direction and keeps interest payments on positive flows', async () => {
     render(App);
+    const flowSection = page.getByLabelText('Cash-flow entries').element();
+    expect(flowSection.querySelectorAll('.flow-head > span')).toHaveLength(4);
+    expect(flowSection.querySelectorAll('.flow-row > label')).toHaveLength(3);
+    expect(flowSection.querySelector('.flow-row .interest-toggle')).toBeTruthy();
+    const balanceLabel = flowSection.querySelector<HTMLElement>('.flow-balance-label')!;
+    const balanceValue = flowSection.querySelector<HTMLOutputElement>('.flow-balance-row output')!;
+    const amountInput = flowSection.querySelector<HTMLInputElement>('.flow-row input[type="number"]')!;
+    expect(getComputedStyle(balanceLabel).gridColumnStart).toBe('1');
+    expect(getComputedStyle(balanceValue).gridColumnStart).toBe('2');
+    for (const width of [1280, 1536, 390]) {
+      await page.viewport(width, 720);
+      expect(flowSection.scrollWidth).toBeLessThanOrEqual(flowSection.clientWidth);
+      const dateInputs = [...flowSection.querySelectorAll<HTMLInputElement>('input[type="date"]')];
+      const amountInputs = [...flowSection.querySelectorAll<HTMLInputElement>('input[type="number"]')].filter((input) => input.closest('.flow-row'));
+      expect(dateInputs.every((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
+      expect(amountInputs.every((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
+      const amountTextEdge = amountInput.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(amountInput).paddingRight);
+      const balanceTextEdge = balanceValue.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(balanceValue).paddingRight);
+      expect(Math.abs(amountTextEdge - balanceTextEdge)).toBeLessThan(1);
+      if (width === 1536) expect(flowSection.querySelector<HTMLElement>('.flow-row')?.getBoundingClientRect().height ?? Infinity).toBeLessThanOrEqual(52);
+    }
+    await page.viewport(1280, 720);
+    const addFlow = page.getByRole('button', { name: 'Add cash flow' }).element();
+    expect(addFlow.getBoundingClientRect().width).toBeGreaterThan(0);
     await page.getByLabelText('Date').fill('2026-01-02');
     await page.getByLabelText('Net amount in euro').fill('50');
     const interest = page.getByRole('checkbox', { name: 'Interest payment' });
@@ -212,15 +436,19 @@ describe('CSH2 application inputs', () => {
     await expect.element(interest).toBeChecked();
     expect(localStorage.getItem('csh2-belgium-flows-v1')).toContain('"interestPayment":true');
 
-    await page.getByRole('combobox', { name: /Direction/ }).selectOptions('outflow');
+    await page.getByLabelText('Net amount in euro').fill('-50');
+    await expect.element(page.getByLabelText('Net amount in euro')).toHaveValue(-50);
     await expect.element(interest).not.toBeChecked();
     await expect.element(interest).toBeDisabled();
+    expect(localStorage.getItem('csh2-belgium-flows-v1')).toContain('"type":"outflow"');
+    expect(localStorage.getItem('csh2-belgium-flows-v1')).toContain('"amount":"50"');
   });
 
   it('keeps benchmark controls at their intrinsic width for nominal and real headings', async () => {
     await page.viewport(1280, 720);
     try {
       render(App);
+      await page.getByText('02 · Benchmark context', { exact: true }).click();
       const headingLocator = page.getByRole('heading', { name: 'Backward annualized returns · 1Y' });
       await expect.element(headingLocator).toBeVisible();
 
@@ -273,6 +501,7 @@ describe('CSH2 application inputs', () => {
     await page.getByLabelText('Net amount in euro').fill('10');
     await page.getByLabelText('Date').click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
+    await page.getByText('Costs and calculation details', { exact: true }).click();
 
     await expect.element(page.getByText('No CSH2 purchase was executed.')).toHaveLength(2);
     await expect.element(page.getByText('Not yet', { exact: true })).toHaveLength(2);
@@ -282,6 +511,7 @@ describe('CSH2 application inputs', () => {
     await page.getByLabelText('Net amount in euro').nth(1).fill('200');
     await page.getByLabelText('Date').nth(1).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
+    await expect.element(page.getByText('Costs and calculation details', { exact: true })).toBeVisible();
 
     await expect.element(page.getByText('24 days', { exact: true })).toBeVisible();
   });
@@ -291,6 +521,7 @@ describe('CSH2 application inputs', () => {
     render(App);
     await expect.element(page.getByRole('button', { name: 'Calculate with latest data' })).toBeDisabled();
     expect(localStorage.getItem('csh2-belgium-flows-v1')).toBeNull();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     const holdingPeriodAssumption = page.getByText(/The post-tax rate assumes/);
     await expect.element(holdingPeriodAssumption).toHaveTextContent('10% CGT');
     const taxRegime = page.getByRole('group', { name: 'CSH2 gain tax regime' });
@@ -313,6 +544,8 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Load example' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
     await expect.element(page.getByRole('heading', { name: 'Backtest result' })).toBeVisible();
+    await page.getByText('Costs and calculation details', { exact: true }).click();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     const renderedText = () => document.body.textContent?.replace(/\s+/g, ' ') ?? '';
     const projectionExplanation = page.getByText(/extends each observed TWR endpoint with no further cash flows/);
     await expect.element(projectionExplanation).toBeVisible();
@@ -321,6 +554,8 @@ describe('CSH2 application inputs', () => {
     expect(projectionRawText).toMatch(/%, and the entered account base rate/);
     expect(projectionRawText).not.toMatch(/and {2,}the entered account base rate/);
     expect(renderedText()).not.toMatch(/return\.These|andthe|returns\.This/);
+    await page.getByRole('tab', { name: 'Outcome' }).click();
+    await page.getByText('Costs and calculation details', { exact: true }).click();
     await expect.element(page.getByText('CSH2 backtest first broke even after')).toBeVisible();
     await expect.element(page.getByText('CSH2 backtest first matched €STR after')).toBeVisible();
     const updatedTimes = page.getByText(/ago$/, { exact: true });
@@ -331,6 +566,7 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText('€STR rate last updated')).toBeVisible();
     await expect.element(page.getByText('(source: ECB statistics)')).toBeVisible();
     await expect.element(page.getByRole('tooltip')).toHaveLength(0);
+    await page.getByText('02 · Benchmark context', { exact: true }).click();
     await page.getByRole('group', { name: 'Backward comparison period' }).getByRole('button', { name: '3M' }).click();
     await page.getByRole('button', { name: 'Forward' }).click();
     await page.getByRole('group', { name: 'Forward comparison period' }).getByRole('button', { name: '1M' }).click();
@@ -355,8 +591,9 @@ describe('CSH2 application inputs', () => {
     await expect.element(page.getByText('Global assumptions', { exact: true })).toHaveLength(0);
     await expect.element(page.getByText('CSH2 gain tax and rate scenario', { exact: true })).toHaveLength(0);
     await expect.element(page.getByText('Gain tax regime', { exact: true })).toBeVisible();
-    await expect.element(page.getByText('Rate scenario', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('CSH2 rate', { exact: true })).toBeVisible();
     await expect.element(page.getByText('Returns', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     const assumptions = page.getByRole('complementary', { name: 'Global assumptions' }).element();
     const assumptionStyles = (element: Element) => assumptions.ownerDocument.defaultView!.getComputedStyle(element);
     const assumptionButtons = [...assumptions.querySelectorAll<HTMLButtonElement>('.global-assumption-picker button')];
@@ -371,9 +608,11 @@ describe('CSH2 application inputs', () => {
 
     await page.getByRole('button', { name: 'Load example' }).click();
     await page.getByRole('button', { name: 'Calculate with latest data' }).click();
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     const currentRates = page.getByLabelText('Current rates used');
     await expect.element(currentRates).toBeVisible();
-    const performancePicker = page.getByRole('group', { name: 'Performance chart view' }).element();
+    const performancePicker = page.getByRole('group', { name: 'Projection view' }).element();
+    await page.getByText('02 · Benchmark context', { exact: true }).click();
     const directionPicker = page.getByRole('group', { name: 'Return direction' }).element();
     const pickerStyles = (element: Element) => {
       const styles = assumptionStyles(element);
@@ -386,20 +625,23 @@ describe('CSH2 application inputs', () => {
     expect(pickerStyles(performancePicker)).toEqual(pickerStyles(directionPicker));
     expect(buttonStyles(performancePicker.querySelectorAll('button')[0])).toEqual(buttonStyles(directionPicker.querySelectorAll('button')[1]));
     expect(buttonStyles(performancePicker.querySelectorAll('button')[1])).toEqual(buttonStyles(directionPicker.querySelectorAll('button')[0]));
-    const netValueArticle = page.getByText('Net value if sold today').element().closest('article')!;
+    await page.getByRole('tab', { name: 'Outcome' }).click();
+    const netValueArticle = page.getByText('Net CSH2 value if sold today').element().closest('article')!;
     const nominalEuroValue = netValueArticle.querySelector('strong')!.textContent;
     await mode.getByRole('button', { name: 'Real' }).click();
 
     await expect.element(mode.getByRole('button', { name: 'Real' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('tab', { name: 'Future outlook' }).click();
     await expect.element(currentRates).toBeVisible();
     const realCurrentRates = currentRates.element();
     const realEstimatedCsh2 = [...realCurrentRates.querySelectorAll('.estimated-rate')].find((summary) => summary.textContent?.startsWith('Estimated CSH2'))!;
     expect(realEstimatedCsh2.textContent).toMatch(/Estimated CSH2 .*±.* pp/);
     await expect.element(page.getByRole('heading', { name: 'Backward annualized returns · 1Y' })).toBeVisible();
-    await expect.element(page.getByText('CSH2 annualized money-weighted return')).toBeVisible();
-    await expect.element(page.getByText(/annualized money-weighted return difference/)).toBeVisible();
+    await page.getByRole('tab', { name: 'Outcome' }).click();
+    await expect.element(page.getByText(/p\.a\. \(MWR\)/).nth(0)).toBeVisible();
+    await expect.element(page.getByText(/[+−-].* p\.p\./).nth(0)).toBeVisible();
     await expect.element(page.getByLabelText('Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows')).toBeVisible();
-    expect(netValueArticle.querySelector('strong')!.textContent).toBe(nominalEuroValue);
+    expect(page.getByText('Net CSH2 value if sold today').element().closest('article')!.querySelector('strong')!.textContent).toBe(nominalEuroValue);
     expect(localStorage.getItem('csh2-belgium-settings-v1')).toContain('"returnMode":"real"');
 
     await page.getByRole('button', { name: 'Portfolio value' }).click();
@@ -412,10 +654,12 @@ describe('CSH2 application inputs', () => {
     localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ returnMode: 'real' }));
     render(App);
 
-    await expect.element(page.getByText(/^Inflation-adjusted returns use Belgian CPI\./)).toBeVisible();
+    const realCoverageNote = page.getByText(/^Inflation-adjusted returns use Belgian CPI\./);
+    await expect.element(realCoverageNote).toBeVisible();
+    expect(realCoverageNote.element().textContent).toMatch(/^Inflation-adjusted returns use Belgian CPI\.\s+The latest portion is provisional and extrapolated from trailing 12-month observed inflation after \d{4}-\d{2}\.$/);
     await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toHaveLength(0);
-    const metric = page.getByText('CSH2 annualized money-weighted return').element().closest('article')!;
-    expect(metric.querySelector('strong')!.textContent).not.toBe('—');
+    const metric = page.getByText('Annualized outcome (MWR)', { exact: true }).element().closest('tr')!;
+    expect(metric.querySelector('td:nth-child(2)')!.textContent).not.toBe('—');
   });
 
   it('keeps the global return control and Statbel notice within a narrow viewport', async () => {
@@ -446,8 +690,8 @@ describe('CSH2 application inputs', () => {
     const initialChart = await chart.screenshot({ base64: true, save: false });
 
     await page.getByLabelText('Your account base annual rate (%)').fill('2.5');
-    await page.getByRole('heading', { name: 'Calculation settings' }).click();
-    await expect.element(staleMessage).not.toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Calculation settings' })).toBeVisible();
+    await expect.element(staleMessage).toBeVisible();
 
     await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '10% CGT (no exemption)' }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
@@ -467,6 +711,7 @@ describe('CSH2 application inputs', () => {
     expect(fractionalChart).not.toBe(exemptionChart);
 
     await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '30% Reynders Tax' }).click();
+    await page.getByText('Transaction ledger', { exact: true }).nth(0).click();
     await expect.element(page.getByText('Reynders Tax', { exact: true })).toBeVisible();
     await expect.element(staleMessage).not.toBeInTheDocument();
     const reyndersChart = await chart.screenshot({ base64: true, save: false });

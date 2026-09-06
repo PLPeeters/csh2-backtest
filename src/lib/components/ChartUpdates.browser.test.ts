@@ -35,6 +35,9 @@ vi.mock('lightweight-charts', () => ({
 
 import HoldingPeriodEvolutionChart from './HoldingPeriodEvolutionChart.svelte';
 import LineChart from './LineChart.svelte';
+import ComparisonResults from './ComparisonResults.svelte';
+import FutureOutlookSection from './FutureOutlookSection.svelte';
+import type { CalculationView } from '../types';
 
 interface SeriesApiSpy {
   applyOptions: ReturnType<typeof vi.fn>;
@@ -150,6 +153,133 @@ describe('chart update paths', () => {
     expect(series[3].setData).toHaveBeenCalledWith([]);
     expect(series[4].setData).toHaveBeenCalledWith([]);
     expect(series[5].setData).toHaveBeenCalledWith([]);
+  });
+
+  it('labels a projected portfolio crossover on the chart and in its accessible name', async () => {
+    const series = Array.from({ length: 7 }, seriesSpy);
+    let nextSeries = 0;
+    chartApi.addSeries.mockImplementation(() => series[nextSeries++]);
+    const result = await render(LineChart, {
+      data: {
+        csh2: [{ date: '2026-01-01', value: 100 }],
+        overnight: [],
+        account: [{ date: '2026-01-01', value: 110 }],
+        projected: {
+          csh2: [{ date: '2026-01-01', value: 100 }, { date: '2026-01-02', value: 111 }],
+          overnight: [],
+          account: [{ date: '2026-01-01', value: 110 }, { date: '2026-01-02', value: 110.1 }],
+          throughDate: '2026-01-02',
+          csh2AnnualRatePercent: 3,
+          overnightRatePercent: 1
+        }
+      },
+      ariaLabel: 'Portfolio value',
+      crossoverDate: '2026-01-02',
+      from: '2026-01-01',
+      to: '2026-01-02'
+    });
+    await flushFrames();
+
+    expect(markersApi.setMarkers).toHaveBeenCalledWith([expect.objectContaining({
+      time: '2026-01-02',
+      text: 'Crossover · 2 Jan 2026'
+    })]);
+    expect(chartApi.timeScaleApi.setVisibleRange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-01-02' });
+    await expect.element(result.getByRole('img', { name: 'Portfolio value. Projected crossover on 2 Jan 2026.' })).toBeInTheDocument();
+  });
+
+  it('keeps Outcome chart modes extended through their projected dates', async () => {
+    const series = Array.from({ length: 28 }, seriesSpy);
+    let nextSeries = 0;
+    chartApi.addSeries.mockImplementation(() => series[nextSeries++]);
+    const seriesFor = (projected?: boolean, throughDate = '2026-01-05') => ({
+      csh2: [{ date: '2026-01-01', value: 100 }, { date: '2026-01-03', value: 101 }],
+      overnight: [{ date: '2026-01-01', value: 1 }, { date: '2026-01-03', value: 1.1 }],
+      account: [{ date: '2026-01-01', value: 100 }, { date: '2026-01-03', value: 102 }],
+      ...(projected ? {
+        projected: {
+          csh2: [{ date: '2026-01-03', value: 101 }, { date: throughDate, value: 103 }],
+          overnight: [{ date: '2026-01-03', value: 1.1 }, { date: throughDate, value: 1.2 }],
+          account: [{ date: '2026-01-03', value: 102 }, { date: throughDate, value: 104 }],
+          throughDate,
+          csh2AnnualRatePercent: 3,
+          overnightRatePercent: 1
+        }
+      } : {})
+    });
+    const viewFor = (projected = false): CalculationView => ({
+      result: {
+        valuation: { date: '2026-01-03', price: 100 },
+        netLiquidationValue: 100,
+        grossValue: 100,
+        units: 1,
+        availableCash: 0,
+        paidTob: 0,
+        paidCgt: 0,
+        paidReyndersTax: 0,
+        terminalTob: 0,
+        terminalCgt: 0,
+        terminalReyndersTax: 0,
+        paidBrokerFees: 0,
+        terminalBrokerFee: 0,
+        missedAmount: 0,
+        csh2MoneyWeightedReturn: 0,
+        accountMoneyWeightedReturn: 0,
+        csh2TimeWeightedReturn: 0,
+        accountTimeWeightedReturn: 0,
+        entries: [],
+        observedHoldingPeriods: {},
+        fidelityPremiumAssessments: []
+      },
+      metadata: { cachedAt: '2026-01-03T00:00:00.000Z', prices: {} },
+      rateMetadata: { cachedAt: '2026-01-03T00:00:00.000Z', rates: {} },
+      cpiMetadata: {
+        source: 'test', dataSourceId: 'test', backfillViewId: 'test', currentViewId: 'test', license: 'test',
+        adaptations: 'test', cachedAt: '2026-01-03T00:00:00.000Z', base: 'test', indices: {}
+      },
+      settings: {
+        applyCapitalGainsExemption: false,
+        applyReyndersTax: false,
+        buyWholeSharesOnly: false,
+        accruedBaseInterest: '0',
+        fidelityPremiums: [],
+        brokerTransactionFee: '0',
+        accountBaseInterestRate: '0',
+        accountFidelityPremium: '0',
+        bestSavingsBaseInterestRate: '0',
+        bestSavingsFidelityPremium: '0',
+        totalSavingsAmount: '100',
+        csh2RateScenario: 'base',
+        returnMode: 'nominal'
+      },
+      returnSeries: {
+        ...seriesFor(projected),
+        timeWeighted: seriesFor(projected, '2026-01-06'),
+        portfolioValue: seriesFor(projected, '2026-01-05')
+      },
+      from: '2026-01-01',
+      to: '2026-01-03'
+    });
+
+    const result = await render(ComparisonResults, { comparisonView: viewFor(), initialReturnChartMode: 'portfolio-value' });
+    await flushFrames();
+    clearChartCalls(series);
+
+    await result.rerender({ comparisonView: viewFor(true), initialReturnChartMode: 'portfolio-value' });
+    expect(chartApi.timeScaleApi.setVisibleRange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-01-05' });
+    expect(series[3].setData).toHaveBeenCalledWith([{ time: '2026-01-03', value: 101 }, { time: '2026-01-05', value: 103 }]);
+    await expect.element(result.getByText(/Dashed through/)).toBeVisible();
+
+    clearChartCalls(series);
+    await result.getByRole('button', { name: 'Performance' }).click();
+    expect(chartApi.timeScaleApi.setVisibleRange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-01-06' });
+
+    clearChartCalls(series);
+    const futureView = viewFor(true);
+    const future = await render(FutureOutlookSection, { controller: { view: futureView, settings: futureView.settings, benchmark: undefined, benchmarkStatus: { kind: 'idle', message: '' }, cpiData: undefined } as unknown as import('../state/backtest.svelte').BacktestController, setupTab: 'current' });
+    await flushFrames();
+    expect(chartApi.timeScaleApi.setVisibleRange).toHaveBeenCalledWith({ from: '2026-01-03', to: '2026-01-06' });
+    await expect.element(future.getByRole('heading', { name: 'Projected performance' })).toBeVisible();
   });
 
   it('coalesces line-chart resizes without touching data or range', async () => {

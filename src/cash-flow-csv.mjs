@@ -39,8 +39,52 @@ export function parseImportedAmount(value) {
   return Number.isFinite(amount) && amount !== 0 ? amount : null;
 }
 
+function normalizeDescription(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[’'`´]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function headerMatch(headers, patterns) {
-  return headers.find((header) => patterns.some((pattern) => pattern.test(header.toLowerCase())));
+  return headers.find((header) => patterns.some((pattern) => pattern.test(normalizeDescription(header))));
+}
+
+const descriptionHeaderPatterns = [
+  /description/, /\bdesc\b/, /libell/, /communication/, /omschrijving/, /beschrijving/, /mededeling/, /verrichting/, /motif/,
+  /memo/, /details?/, /notes?/, /message/, /comment/, /referen[ct]/
+];
+
+const interestDescriptionPatterns = [
+  /\binterest(?:s)?\b/, /\binteret(?:s)?\b/, /\brente(?:s)?\b/, /\brentevergoeding\b/, /\brentebetaling\b/, /\bbasisrente\b/,
+  /\bprimes? (?:de )?fidelite\b/, /\bbonus(?: de)? fidelite\b/, /\bfidelity premium\b/, /\bfidelity bonus\b/, /\bloyalty premium\b/, /\bloyalty bonus\b/,
+  /\bgetrouwheids? ?premies?\b/, /\bgetrouwheids? ?bonus\b/, /\bloyaliteits? ?premies?\b/, /\btrouwpremies?\b/
+];
+
+const liquidationActionPatterns = [
+  /\bliquidat(?:ion|ie)\b/, /\bvereffen(?:ing|en)\b/, /\bsettlement\b/, /\bafloss(?:ing|en)\b/, /\bterugbetal(?:ing|en)\b/, /\bterugstorting\b/,
+  /\brembours(?:ement|er)?\b/, /\bremboursement\b/, /\brembourse\b/, /\bdeblocage\b/, /\bliberation\b/, /\bdenouement\b/,
+  /\bmatur(?:ity|ed)\b/, /\becheance\b/, /\bvervaldag\b/, /\bvervallen\b/, /\bcloture\b/, /\bclosing\b/, /\bclosure\b/, /\bclosed\b/, /\bsluiting\b/, /\bafsluiting\b/,
+  /\bbeeindiging\b/, /\btermination\b/, /\bredemption\b/, /\bvrijgave\b/
+];
+
+const liquidationInstrumentPatterns = [
+  /\bemprunt\b/, /\bpret\b/, /\bcompte a terme\b/, /\bdepot a terme\b/, /\bplacement a terme\b/, /\blening\b/, /\btermijnrekening\b/,
+  /\btermijndeposito\b/, /\bdeposito\b/, /\bloan\b/, /\bdeposit(?:s)?\b/, /\bterm account\b/, /\bterm deposit\b/, /\bfixed term\b/, /\btime deposit\b/
+];
+
+function matchesAny(text, patterns) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+export function isInterestDescription(value) {
+  const text = normalizeDescription(value);
+  if (!text) return false;
+  return matchesAny(text, interestDescriptionPatterns)
+    || (matchesAny(text, liquidationActionPatterns) && matchesAny(text, liquidationInstrumentPatterns));
 }
 
 function formatForDate(value) {
@@ -64,6 +108,7 @@ function columnValues(rows, column) {
 export function detectCsvMapping(rows, headers) {
   const dateHeader = headerMatch(headers, [/date/, /datum/]);
   const amountHeader = headerMatch(headers, [/amount/, /bedrag/, /value/, /mutatie/]);
+  const descriptionHeader = headerMatch(headers, descriptionHeaderPatterns);
   const dateCandidates = headers.filter((header) => {
     const values = columnValues(rows, header);
     return values.length && values.every((value) => formatForDate(value));
@@ -79,10 +124,10 @@ export function detectCsvMapping(rows, headers) {
   const dmyCount = formats.filter((format) => format === 'dmy').length;
   const mdyCount = formats.filter((format) => format === 'mdy').length;
   const dateFormat = isoCount ? 'iso' : mdyCount > dmyCount ? 'mdy' : 'dmy';
-  return { dateColumn, amountColumn, dateFormat };
+  return { dateColumn, amountColumn, descriptionColumn: descriptionHeader ?? '', dateFormat };
 }
 
-export function mapImportedRows(rows, { dateColumn, amountColumn, dateFormat }) {
+export function mapImportedRows(rows, { dateColumn, amountColumn, descriptionColumn = '', dateFormat }) {
   const flows = [];
   const invalidRows = [];
   rows.forEach((row, index) => {
@@ -92,7 +137,8 @@ export function mapImportedRows(rows, { dateColumn, amountColumn, dateFormat }) 
       invalidRows.push(index + 2);
       return;
     }
-    flows.push({ date, type: signedAmount < 0 ? 'outflow' : 'inflow', amount: Math.abs(signedAmount) });
+    const type = signedAmount < 0 ? 'outflow' : 'inflow';
+    flows.push({ date, type, amount: Math.abs(signedAmount), interestPayment: type === 'inflow' && isInterestDescription(descriptionColumn ? row[descriptionColumn] : '') });
   });
   return { flows: flows.toSorted((first, second) => first.date.localeCompare(second.date)), invalidRows };
 }

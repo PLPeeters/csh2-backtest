@@ -13,13 +13,6 @@
 </script>
 
 <section class="benchmark-history-section" aria-labelledby="benchmark-heading">
-  <div class="benchmark-savings-control">
-    <label class="account-interest-rate benchmark-savings-input">
-      Total savings amount (€)
-      <input type="number" min="0.01" step="0.01" placeholder="Default: 10000" value={controller.settings.totalSavingsAmount} oninput={(event) => controller.setTotalSavingsAmount(event.currentTarget.value)} />
-    </label>
-    <p class="benchmark-savings-help">Used to apply the annual CGT exemption to after-tax returns, holding periods, and the savings-account comparison.</p>
-  </div>
   <section class="panel chart-panel benchmark-chart-panel">
     <div class="section-title">
       <div class="benchmark-title">

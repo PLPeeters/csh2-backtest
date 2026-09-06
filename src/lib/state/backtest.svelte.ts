@@ -141,7 +141,27 @@ export function createBacktestController(dependencies: BacktestDependencies) {
     addFlow(flow: Partial<CashFlowDraft> = {}) { flows.push({ ...blankFlow(), ...flow }); persist(); },
     removeFlow(id: string) { flows = flows.filter((flow) => flow.id !== id); if (!flows.length) flows = [blankFlow()]; persist(); },
     replaceFlows(next: CashFlowDraft[]) { flows = next; persist(); },
-    updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) { const flow = flows.find((item) => item.id === id); if (flow) { if (key === 'date') flow.date = value; else if (key === 'amount') flow.amount = value; else if (value === 'inflow' || value === 'outflow') { flow.type = value; if (value === 'outflow') flow.interestPayment = false; } persist(); } },
+    updateFlow(id: string, key: 'date' | 'type' | 'amount', value: string) {
+      const flow = flows.find((item) => item.id === id);
+      if (!flow) return;
+      if (key === 'date') flow.date = value;
+      else if (key === 'amount') {
+        const trimmed = value.trim();
+        if (!trimmed) flow.amount = '';
+        else {
+          const numeric = Number(trimmed);
+          if (Number.isFinite(numeric)) {
+            flow.amount = String(Math.abs(numeric));
+            flow.type = numeric < 0 ? 'outflow' : 'inflow';
+            if (flow.type === 'outflow') flow.interestPayment = false;
+          } else flow.amount = value;
+        }
+      } else if (value === 'inflow' || value === 'outflow') {
+        flow.type = value;
+        if (value === 'outflow') flow.interestPayment = false;
+      }
+      persist();
+    },
     updateInterestPayment(id: string, value: boolean) { const flow = flows.find((item) => item.id === id); if (flow?.type === 'inflow') { flow.interestPayment = value; persist(); } },
     addFidelityPremium() { settings.fidelityPremiums.push(blankFidelityPremium()); persist(); },
     removeFidelityPremium(id: string) { settings.fidelityPremiums = settings.fidelityPremiums.filter((premium) => premium.id !== id); persist(); },

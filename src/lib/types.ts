@@ -90,7 +90,7 @@ export interface LedgerEntry {
   date: string; type: CashFlowType; amount: number; interestPayment?: boolean; price?: number; priceKind?: string; units: number;
   remainingCash: number; brokerFee: number; tob: number; cgt: number; reyndersTax: number; exoneratedCgt: number;
 }
-export interface BreakEvenEstimate { date: string; days: number; csh2AnnualRatePercent: number }
+export interface ProjectedCrossover { date: string; days: number; trailing: 'csh2' | 'account' }
 export interface FidelityPremiumAssessment {
   id: string; baseAmount: number; earnedDate: string; finalPayoutAmount: number;
   currentPeriodPreferred: 'move now' | 'move to best account' | 'wait' | 'either'; currentPeriodDifference: number;
@@ -105,7 +105,7 @@ export interface BacktestResult {
   paidTob: number; paidCgt: number; paidReyndersTax: number; terminalTob: number; terminalCgt: number;
   terminalReyndersTax: number; paidBrokerFees: number; terminalBrokerFee: number; missedAmount: number;
   missedSharePercent?: number; csh2MoneyWeightedReturn?: number; accountMoneyWeightedReturn?: number;
-  csh2TimeWeightedReturn?: number; accountTimeWeightedReturn?: number; entries: LedgerEntry[]; breakEvenEstimate?: BreakEvenEstimate;
+  csh2TimeWeightedReturn?: number; accountTimeWeightedReturn?: number; entries: LedgerEntry[]; projectedCrossover?: ProjectedCrossover;
   observedHoldingPeriods: ObservedHoldingPeriods;
   fidelityPremiumAssessments: FidelityPremiumAssessment[];
 }

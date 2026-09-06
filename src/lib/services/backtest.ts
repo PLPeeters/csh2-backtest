@@ -1,4 +1,4 @@
-import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildMarketReturnProjection, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedAccountReturnSeries, buildTimeWeightedReturnProjection, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, estimateBreakEvenDate, findObservedHoldingPeriods, runBacktest } from '../../backtest.mjs';
+import { assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildMarketReturnProjection, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedAccountReturnSeries, buildTimeWeightedReturnProjection, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, findObservedHoldingPeriods, findProjectedCrossover, runBacktest } from '../../backtest.mjs';
 import { latestAvailablePriceDate } from '../../static-market-data.mjs';
 import type { BacktestResult, CalculationSettings, CashFlowDraft, CalculationView, MarketDataBundle } from '../types';
 import { getCurrentRateModel } from './current-rate-model-cache.mjs';
@@ -59,10 +59,7 @@ export function createBacktestCalculator() {
     observedHoldingPeriods: BacktestResult['observedHoldingPeriods'];
   }>>();
   const accountHistoryStages = new Map<string, StageEntry<{ displayed: CalculationView['returnSeries']['account']; nominal: CalculationView['returnSeries']['account'] }>>();
-  const scenarioStages = new Map<string, StageEntry<{
-    breakEvenEstimate: BacktestResult['breakEvenEstimate'];
-    marketProjection: ReturnType<typeof buildMarketReturnProjection>;
-  }>>();
+  const scenarioStages = new Map<string, StageEntry<{ marketProjection: ReturnType<typeof buildMarketReturnProjection> }>>();
   let projectedAccountStage: StageEntry<ReturnType<typeof buildProjectedAccountReturnSeries>> | undefined;
 
   const clear = () => {
@@ -167,10 +164,14 @@ export function createBacktestCalculator() {
     const currentRateModel = getCurrentRateModel(market.version, market.data.prices, market.rateData.rates, valuationDate, undefined, market.currentRateModel);
     const csh2AnnualRatePercent = scenarioRate(currentRateModel, settings.csh2RateScenario);
     const projectionAssumption = { csh2AnnualRatePercent };
-    const scenarioKey = JSON.stringify([historicalKey, fidelityPremiums, settings.csh2RateScenario]);
+    // The displayed forward portfolio assumes no new external cash flows.
+    const projectedFlows = normalized.filter((flow) => flow.date <= valuationDate);
+    const projectedFirstInvestment = projectedFlows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).toSorted((left, right) => left.date.localeCompare(right.date))[0];
+    const scenarioKey = JSON.stringify([projectedFlows, calculationOptions, fidelityPremiums, settings.csh2RateScenario]);
     const scenarioStage = getStage(scenarioStages, scenarioKey, () => ({
-      breakEvenEstimate: estimateBreakEvenDate(normalized, market.data.prices, valuationDate, calculationOptions, projectionAssumption),
-      marketProjection: fidelityPremiums.length ? buildMarketReturnProjection(normalized, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption) : undefined
+      marketProjection: fidelityPremiums.length && projectedFirstInvestment
+        ? buildMarketReturnProjection(projectedFlows, market.data.prices, market.rateData.rates, valuationDate, projectedFirstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption)
+        : undefined
     }));
 
     const accountBaseRateInput = settings.accountBaseInterestRate.trim();
@@ -183,25 +184,18 @@ export function createBacktestCalculator() {
     if (accountBaseRateInput !== '' && settings.accountFidelityPremium !== '') accountRates.fidelityPremiumPercent = Number(settings.accountFidelityPremium);
     if (bestSavingsBaseRateIsValid) accountRates.bestSavingsBaseAnnualRatePercent = bestSavingsBaseRate;
     if (bestSavingsBaseRateInput !== '' && settings.bestSavingsFidelityPremium !== '') accountRates.bestSavingsFidelityPremiumPercent = Number(settings.bestSavingsFidelityPremium);
-    const projectedAccountKey = JSON.stringify([normalized, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
+    const projectedAccountKey = JSON.stringify([projectedFlows, valuationDate, fidelityPremiums, accruedBaseInterest, accountRates.baseAnnualRatePercent]);
     projectedAccountStage = getSingleStage(projectedAccountStage, projectedAccountKey, () => fidelityPremiums.length && accountBaseRateIsValid
-      ? buildProjectedAccountReturnSeries(normalized, valuationDate, fidelityPremiums, calculationOptions, accountRates)
+      ? buildProjectedAccountReturnSeries(projectedFlows, valuationDate, fidelityPremiums, calculationOptions, accountRates)
       : undefined);
 
     const fidelityPremiumAssessments = fidelityPremiums.length && !accountBaseRateIsValid
       ? []
       : assessFidelityPremiumTimings(market.data.prices, valuationDate, calculationOptions, fidelityPremiums, { ...projectionAssumption, ...accountRates }) as BacktestResult['fidelityPremiumAssessments'];
     const projected = scenarioStage.value.marketProjection && projectedAccountStage.value ? { ...scenarioStage.value.marketProjection, ...projectedAccountStage.value } : undefined;
-    const historicalFlows = normalized.filter((flow) => flow.date <= valuationDate);
-    const externalInflows = historicalFlows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
-    const outflows = historicalFlows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
-    const timeWeightedProjection = projected && historicalFlows.length
-      ? (() => {
-        const marketProjection = buildMarketReturnProjection(historicalFlows, market.data.prices, market.rateData.rates, valuationDate, firstInvestment.date, fidelityPremiums, calculationOptions, projectionAssumption);
-        const accountProjection = buildProjectedAccountReturnSeries(historicalFlows, valuationDate, fidelityPremiums, calculationOptions, accountRates);
-        return marketProjection && accountProjection ? { ...marketProjection, ...accountProjection } : undefined;
-      })()
-      : undefined;
+    const externalInflows = projectedFlows.filter((flow) => flow.type === 'inflow' && !flow.interestPayment).reduce((sum, flow) => sum + flow.amount, 0);
+    const outflows = projectedFlows.filter((flow) => flow.type === 'outflow').reduce((sum, flow) => sum + flow.amount, 0);
+    const timeWeightedProjection = projected;
     const timeWeightedProjected = timeWeightedProjection
       ? buildTimeWeightedReturnProjection(observedStage.value.nominalTimeWeighted, timeWeightedProjection, market.rateData.rates, valuationDate, {
         externalInflows,
@@ -215,16 +209,19 @@ export function createBacktestCalculator() {
       account: portfolioValueSeries(accountHistoryStage.value.nominal, normalized),
       projected: projected ? {
         ...projected,
-        csh2: portfolioValueSeries(projected.csh2, normalized),
+        csh2: portfolioValueSeries(projected.csh2, projectedFlows),
         overnight: [],
-        account: portfolioValueSeries(projected.account, normalized)
+        account: portfolioValueSeries(projected.account, projectedFlows)
       } : undefined
     };
+    const projectedCrossover = portfolioValue.projected
+      ? findProjectedCrossover(portfolioValue.projected.csh2, portfolioValue.projected.account, valuationDate)
+      : undefined;
     const result = {
       ...observedStage.value.simulation,
       fidelityPremiumAssessments,
       observedHoldingPeriods: observedStage.value.observedHoldingPeriods,
-      breakEvenEstimate: scenarioStage.value.breakEvenEstimate
+      projectedCrossover
     } as BacktestResult;
     return {
       result,

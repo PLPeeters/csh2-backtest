@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { ColorType, createChart, LineSeries, LineStyle, LineType } from 'lightweight-charts';
-  import type { IChartApi, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
+  import { ColorType, createChart, createSeriesMarkers, LineSeries, LineStyle, LineType } from 'lightweight-charts';
+  import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, MouseEventParams, SeriesMarker, Time } from 'lightweight-charts';
   import { onMount, untrack } from 'svelte';
   import type { BenchmarkSeries, ChartPoint, ComparisonSeries, CpiEnvelope } from '../types';
   type ChartSeries = BenchmarkSeries | ComparisonSeries;
-  let { data, ariaLabel, from, to, unit = 'percent', accountLabel = 'Your account' }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro'; accountLabel?: string; cpiIndices?: CpiEnvelope['indices'] } = $props();
+  let { data, ariaLabel, from, to, unit = 'percent', accountLabel = 'Your account', crossoverDate }: { data: ChartSeries; ariaLabel: string; from?: string; to?: string; unit?: 'percent' | 'euro'; accountLabel?: string; crossoverDate?: string; cpiIndices?: CpiEnvelope['indices'] } = $props();
   let host: HTMLDivElement;
   let chart: IChartApi | undefined;
   let csh2Series: ISeriesApi<'Line'> | undefined;
@@ -13,6 +13,7 @@
   let projectedCsh2Series: ISeriesApi<'Line'> | undefined;
   let projectedOvernightSeries: ISeriesApi<'Line'> | undefined;
   let projectedAccountSeries: ISeriesApi<'Line'> | undefined;
+  let crossoverMarkers: ISeriesMarkersPluginApi<Time> | undefined;
   let calendarSeries: ISeriesApi<'Line'> | undefined;
   let resizeFrame: number | undefined;
   let pendingWidth = 0;
@@ -20,12 +21,30 @@
   let loadedData: ChartSeries | undefined;
   let appliedFrom: string | undefined;
   let appliedTo: string | undefined;
+  let appliedCrossoverDate: string | undefined;
   let legendDate = $state('');
   let legendValues = $state<{ color: string; label: string; parenthesize: boolean; value: string }[]>([]);
   const euroValue = new Intl.NumberFormat('en-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
   function formattedValue(value: number) {
     return unit === 'euro' ? euroValue.format(value) : `${value.toFixed(2)}%`;
+  }
+
+  function formattedCrossoverDate(value: string) {
+    return new Intl.DateTimeFormat('en-BE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  }
+
+  function crossoverMarker(): SeriesMarker<Time>[] {
+    if (!crossoverDate) return [];
+    return [{
+      time: crossoverDate as Time,
+      position: 'aboveBar',
+      shape: 'arrowDown',
+      color: '#5b746c',
+      text: `Crossover · ${formattedCrossoverDate(crossoverDate)}`,
+      id: `projected-crossover-${crossoverDate}`,
+      size: 0.8
+    }];
   }
 
   function chartData(points: ChartPoint[]) {
@@ -111,6 +130,12 @@
     return true;
   }
 
+  function updateCrossoverMarker() {
+    if (!crossoverMarkers || crossoverDate === appliedCrossoverDate) return;
+    crossoverMarkers.setMarkers(crossoverMarker());
+    appliedCrossoverDate = crossoverDate;
+  }
+
   function updateRange(nextData: ChartSeries, visibleFrom?: string, visibleTo?: string, force = false) {
     if (!chart || (!force && visibleFrom === appliedFrom && visibleTo === appliedTo)) return;
     const account = 'account' in nextData ? nextData.account : [];
@@ -139,6 +164,11 @@
   });
 
   $effect(() => {
+    void crossoverDate;
+    updateCrossoverMarker();
+  });
+
+  $effect(() => {
     const visibleFrom = from;
     const visibleTo = to;
     untrack(() => updateRange(data, visibleFrom, visibleTo));
@@ -152,6 +182,7 @@
     overnightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lastValueVisible: true, priceFormat: { type: 'custom', formatter: formattedValue } });
     accountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineType: LineType.WithSteps, lastValueVisible: true, priceFormat: { type: 'custom', formatter: formattedValue } });
     projectedCsh2Series = chart.addSeries(LineSeries, { color: '#1d6a54', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
+    crossoverMarkers = createSeriesMarkers(projectedCsh2Series, [], { autoScale: true, zOrder: 'top' });
     projectedOvernightSeries = chart.addSeries(LineSeries, { color: '#c7943c', lineWidth: 2, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
     projectedAccountSeries = chart.addSeries(LineSeries, { color: '#3867a8', lineWidth: 2, lineStyle: LineStyle.Dashed, lineType: LineType.WithSteps, lastValueVisible: false, priceFormat: { type: 'custom', formatter: formattedValue } });
     calendarSeries = chart.addSeries(LineSeries, { lineVisible: false, lastValueVisible: false, priceLineVisible: false });
@@ -160,10 +191,11 @@
     chart.subscribeCrosshairMove(updateLegend);
     const observer = new ResizeObserver(([entry]) => scheduleResize(entry.contentRect.width));
     observer.observe(host);
-    return () => { observer.disconnect(); if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame); resizeFrame = undefined; chart?.unsubscribeCrosshairMove(updateLegend); chart?.remove(); chart = undefined; csh2Series = undefined; overnightSeries = undefined; accountSeries = undefined; projectedCsh2Series = undefined; projectedOvernightSeries = undefined; projectedAccountSeries = undefined; calendarSeries = undefined; loadedData = undefined; appliedFrom = undefined; appliedTo = undefined; legendValues = []; };
+    updateCrossoverMarker();
+    return () => { observer.disconnect(); if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame); resizeFrame = undefined; chart?.unsubscribeCrosshairMove(updateLegend); crossoverMarkers?.detach(); chart?.remove(); chart = undefined; csh2Series = undefined; overnightSeries = undefined; accountSeries = undefined; projectedCsh2Series = undefined; projectedOvernightSeries = undefined; projectedAccountSeries = undefined; crossoverMarkers = undefined; calendarSeries = undefined; loadedData = undefined; appliedFrom = undefined; appliedTo = undefined; appliedCrossoverDate = undefined; legendValues = []; };
   });
 </script>
-<div bind:this={host} class="chart" aria-label={ariaLabel}>
+<div bind:this={host} class="chart" role="img" aria-label={crossoverDate ? `${ariaLabel}. Projected crossover on ${formattedCrossoverDate(crossoverDate)}.` : ariaLabel}>
   <div class="chart-legend" aria-hidden="true">
     {#if legendDate}<span class="chart-legend-entry chart-legend-date">{legendDate}</span>{/if}
     {#each legendValues as item}

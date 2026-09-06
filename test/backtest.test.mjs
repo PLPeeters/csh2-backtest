@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedPrices, buildReturnProjection, buildTimeWeightedReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, estimateAnnualizedAfterTaxCsh2Rate, estimateBreakEvenDate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, latestAnnualInflation, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, realAnnualizedReturn, realAnnualRate, realGrowthFactor, runBacktest } from '../src/backtest.mjs';
+import { allocateFidelityWithdrawals, assessCurrentRateModelHealth, assessFidelityPremiumTiming, assessFidelityPremiumTimings, buildAccountReturnSeries, buildAccountTimeWeightedReturnSeries, buildBacktestReturnSeries, buildCsh2TimeWeightedReturnSeries, buildCurrentRateEvolution, buildForwardAnnualizedCsh2ReturnSeries, buildForwardAnnualizedOvernightBenchmarkReturnSeries, buildOvernightBenchmarkReturnSeries, buildOvernightTimeWeightedReturnSeries, buildProjectedPrices, buildReturnProjection, buildTimeWeightedReturnProjection, buildTrailingAnnualizedCsh2ReturnSeries, buildTrailingAnnualizedOvernightBenchmarkReturnSeries, calculateAccountTimeWeightedReturn, calculateCsh2TimeWeightedReturn, calculateCurrentRateModel, calculateMoneyWeightedReturn, calculateRealMoneyWeightedReturn, cpiIndexForDate, cpiPointForDate, deflateCashFlowsToDate, estimateAnnualizedAfterTaxCsh2Rate, estimateConstantRateHoldingPeriods, estimateConstantRateMatch, estimateOvernightRateMatch, estimateSavingsAccountRateMatch, estimateSavingsAccountRateMatches, findObservedHoldingPeriods, findProjectedCrossover, latestAnnualInflation, orderFidelityAssessmentsByRecommendation, orderFidelityPremiumsForWithdrawal, overnightAccrualFactor, realAnnualizedReturn, realAnnualRate, realGrowthFactor, runBacktest } from '../src/backtest.mjs';
 
 const prices = { '2026-01-02': 100, '2026-02-02': 110, '2026-03-02': 120 };
 
@@ -634,33 +634,41 @@ test('calculates missed earnings percentage from net cash input in whole-share m
   assert.equal(result.missedSharePercent.toFixed(6), '2.828000');
 });
 
-test('estimates a break-even date from a positive selected CSH2 rate', () => {
-  const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
-    '2026-01-01': 100,
-    '2026-01-31': 100.2
-  }, '2026-01-31', {}, { csh2AnnualRatePercent: 3 });
-  assert.ok(estimate);
-  assert.ok(estimate.date > '2026-01-31');
-  assert.ok(estimate.days <= 36525);
-  assert.equal(estimate.csh2AnnualRatePercent, 3);
+test('finds the portfolio crossover rather than matching the account balance frozen at valuation', () => {
+  const crossover = findProjectedCrossover([
+    { date: '2026-01-31', value: 90 },
+    { date: '2026-02-01', value: 100 },
+    { date: '2026-02-02', value: 103 }
+  ], [
+    { date: '2026-01-31', value: 100 },
+    { date: '2026-02-01', value: 102 },
+    { date: '2026-02-02', value: 102.1 }
+  ], '2026-01-31');
+  assert.deepEqual(crossover, { date: '2026-02-02', days: 2, trailing: 'csh2' });
 });
 
-test('estimates a break-even date beyond one year when the price trend remains positive', () => {
-  const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
-    '2026-01-01': 100,
-    '2026-01-31': 100.01
-  }, '2026-01-31', {}, { csh2AnnualRatePercent: 0.1 });
-  assert.ok(estimate);
-  assert.ok(estimate.days > 365);
-  assert.ok(estimate.days <= 36525);
+test('finds a projected account catch-up in the reverse direction', () => {
+  const crossover = findProjectedCrossover([
+    { date: '2026-01-31', value: 110 },
+    { date: '2026-02-01', value: 109 },
+    { date: '2026-02-02', value: 108 }
+  ], [
+    { date: '2026-01-31', value: 100 },
+    { date: '2026-02-01', value: 106 },
+    { date: '2026-02-02', value: 108.2 }
+  ], '2026-01-31');
+  assert.deepEqual(crossover, { date: '2026-02-02', days: 2, trailing: 'account' });
 });
 
-test('does not estimate break-even without a positive selected CSH2 rate', () => {
-  const estimate = estimateBreakEvenDate([{ date: '2026-01-01', type: 'inflow', amount: 1000 }], {
-    '2026-01-01': 100,
-    '2026-01-31': 100
-  }, '2026-01-31', {}, { csh2AnnualRatePercent: 0 });
-  assert.equal(estimate, undefined);
+test('does not extrapolate a projected crossover beyond the displayed horizon', () => {
+  const crossover = findProjectedCrossover([
+    { date: '2026-01-31', value: 90 },
+    { date: '2026-02-01', value: 91 }
+  ], [
+    { date: '2026-01-31', value: 100 },
+    { date: '2026-02-01', value: 101 }
+  ], '2026-01-31');
+  assert.equal(crossover, undefined);
 });
 
 test('estimates investment-agnostic holding periods from constant current rates', () => {

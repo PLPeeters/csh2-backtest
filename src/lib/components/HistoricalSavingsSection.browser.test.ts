@@ -35,17 +35,48 @@ describe('historical savings controls', () => {
     expect(display.scenario.view.result.accountMoneyWeightedReturn).toBeDefined();
   });
 
-  it('uses the same collapsible disclosure pattern as cash-flow entries', async () => {
+  it('keeps historical rate controls permanently visible without a disclosure', async () => {
     render(HistoricalSavingsSection);
-    const disclosure = page.getByText('Historical rate changes', { exact: true }).element().closest('details')!;
-    const summary = disclosure.querySelector('summary')!;
-    expect(summary.classList.contains('disclosure-summary')).toBe(true);
-    expect(getComputedStyle(summary, '::before').borderLeftColor).toBe('rgb(89, 112, 103)');
+    await expect.element(page.getByRole('heading', { name: 'Historical rate changes', exact: true })).toBeVisible();
+    const section = page.getByText('Historical rate changes', { exact: true }).element().closest('.historical-savings')!;
+    expect(section.querySelector('.historical-rate-panel')).toBeNull();
+    expect(section.querySelector('details')).toBeNull();
+    expect(section.querySelector('summary')).toBeNull();
+    await expect.element(page.getByLabelText('Rate 1 base annual rate (%)')).toBeVisible();
     expect(getComputedStyle(page.getByLabelText('Rate 1 base annual rate (%)').element()).fontSize).toBe('16px');
-    await page.getByText('Historical rate changes', { exact: true }).click();
-    expect(disclosure.open).toBe(false);
-    await page.getByText('Historical rate changes', { exact: true }).click();
-    expect(disclosure.open).toBe(true);
+    const headings = [...section.querySelectorAll<HTMLElement>('.historical-rate-head > span')];
+    expect(headings.map((heading) => heading.textContent?.trim())).toEqual(['Effective from', 'Base rate (%)', 'Fidelity (%)', '']);
+    expect(headings).toHaveLength(4);
+    expect(section.querySelectorAll('.historical-rate-row > label')).toHaveLength(3);
+    const firstDateCell = section.querySelector<HTMLElement>('.historical-rate-row > label:first-child')!;
+    const firstBaseCell = section.querySelector<HTMLElement>('.historical-rate-row > label:nth-child(2)')!;
+    const firstFidelityCell = section.querySelector<HTMLElement>('.historical-rate-row > label:nth-child(3)')!;
+    for (const width of [1280, 1536]) {
+      await page.viewport(width, 720);
+      expect(getComputedStyle(section.querySelector<HTMLElement>('.historical-rate-content')!).padding).toBe('0px');
+      expect(getComputedStyle(headings[1]).textAlign).toBe('right');
+      expect(getComputedStyle(headings[2]).textAlign).toBe('right');
+      expect(getComputedStyle(section.querySelector<HTMLInputElement>('input[aria-label="Rate 1 base annual rate (%)"]')!).textAlign).toBe('right');
+      expect(getComputedStyle(section.querySelector<HTMLInputElement>('input[aria-label="Rate 1 fidelity premium (%)"]')!).textAlign).toBe('right');
+      expect(getComputedStyle(section.querySelector<HTMLButtonElement>('.delete-button')!).justifySelf).toBe('center');
+      expect(firstDateCell.getBoundingClientRect().width).toBeGreaterThan(firstBaseCell.getBoundingClientRect().width);
+      expect(Math.abs(firstBaseCell.getBoundingClientRect().width - firstFidelityCell.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
+    }
+    const addRate = page.getByRole('button', { name: /Add rate change/ }).element();
+    expect(getComputedStyle(addRate).borderStyle).toBe('dashed');
+    expect(addRate.getBoundingClientRect().width).toBeGreaterThan(0);
+    const actions = section.querySelector('.historical-rate-actions')!;
+    const actionButtons = [...actions.querySelectorAll('button')];
+    expect(actionButtons.map((button) => button.textContent?.trim())).toEqual(['Add rate change', 'Import from clipboard']);
+    expect(actionButtons[0].getBoundingClientRect().width).toBeCloseTo(actions.getBoundingClientRect().width, 0);
+    expect(getComputedStyle(actionButtons[1]).marginBottom).not.toBe('0px');
+    const rateList = section.querySelector<HTMLElement>('.historical-rate-list')!;
+    for (const width of [1280, 1536, 390]) {
+      await page.viewport(width, 720);
+      expect(getComputedStyle(section.querySelector<HTMLElement>('.historical-rate-content')!).padding).toBe('0px');
+      expect(rateList.scrollWidth).toBeLessThanOrEqual(rateList.clientWidth);
+      expect([...rateList.querySelectorAll<HTMLInputElement>('input')].every((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
+    }
   });
 
   it('replaces rate rows with rates imported from the clipboard', async () => {

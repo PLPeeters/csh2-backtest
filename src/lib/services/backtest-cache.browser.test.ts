@@ -85,7 +85,7 @@ describe('bounded backtest stage cache', () => {
     expect(real.returnSeries.timeWeighted.projected?.account.at(-1)?.cpiStatus).toBe('extrapolated');
   });
 
-  it('keeps future external cash flows out of projected TWR while preserving the value projection', () => {
+  it('keeps future external cash flows out of both forward chart views', () => {
     const calculator = createBacktestCalculator();
     const historical = calculator.calculate(flows, settings, market, '2026-08-20');
     const withFutureFlow = calculator.calculate([
@@ -96,7 +96,8 @@ describe('bounded backtest stage cache', () => {
     expect(withFutureFlow.returnSeries.timeWeighted.projected?.csh2).toEqual(historical.returnSeries.timeWeighted.projected?.csh2);
     expect(withFutureFlow.returnSeries.timeWeighted.projected?.overnight).toEqual(historical.returnSeries.timeWeighted.projected?.overnight);
     expect(withFutureFlow.returnSeries.timeWeighted.projected?.account).toEqual(historical.returnSeries.timeWeighted.projected?.account);
-    expect(withFutureFlow.returnSeries.portfolioValue.projected?.csh2).not.toEqual(historical.returnSeries.portfolioValue.projected?.csh2);
+    expect(withFutureFlow.returnSeries.portfolioValue.projected?.csh2).toEqual(historical.returnSeries.portfolioValue.projected?.csh2);
+    expect(withFutureFlow.returnSeries.portfolioValue.projected?.account).toEqual(historical.returnSeries.portfolioValue.projected?.account);
   });
 
   it('reuses observed and scenario-independent projection history for account-rate-only changes', () => {

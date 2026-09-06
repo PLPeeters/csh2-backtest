@@ -107,12 +107,11 @@
 <section class="historical-savings" aria-labelledby="historical-savings-heading">
   <div class="section-title"><div><p class="eyebrow">Historical savings rates</p><h3 id="historical-savings-heading">Compare a Belgian savings account with CSH2 and €STR</h3></div></div>
   <p class="historical-intro">Enter each rate change. The selected deposit schedule is compared with the same CSH2 transactions and gross €STR benchmark over an identical date range. Savings calculations use ACT/365 daily base interest, base credit on 1 January, and locked fidelity premiums paid quarterly.</p>
-  <details class="cash-flow-disclosure historical-rate-disclosure" open>
-    <summary class="disclosure-summary"><span>Historical rate changes</span><small>{rates.length} {rates.length === 1 ? 'rate' : 'rates'}</small></summary>
-    <div class="cash-flow-disclosure-content">
-      <div class="historical-rate-head" aria-hidden="true"><span>Effective date</span><span>Base annual rate (%)</span><span>Fidelity premium (%)</span><span></span></div>
+  <div class="historical-rate-heading"><h4>Historical rate changes</h4><small>{rates.length} {rates.length === 1 ? 'rate' : 'rates'}</small></div>
+  <div class="historical-rate-content">
+      <div class="historical-rate-head" aria-hidden="true"><span>Effective from</span><span>Base rate (%)</span><span>Fidelity (%)</span><span></span></div>
       <div class="historical-rate-list" aria-live="polite">{#each rates as row, index (row.id)}<div class="historical-rate-row"><label for={`historical-rate-${row.id}-date`}><span>Rate {index + 1} effective date</span><input id={`historical-rate-${row.id}-date`} aria-label={`Rate ${index + 1} effective date`} type="date" required value={row.date} onchange={(event) => updateRate(row.id, 'date', (event.currentTarget as HTMLInputElement).value)} /></label><label for={`historical-rate-${row.id}-base`}><span>Rate {index + 1} base annual rate (%)</span><input id={`historical-rate-${row.id}-base`} aria-label={`Rate ${index + 1} base annual rate (%)`} type="number" step="0.01" min="-99.99" placeholder="e.g. 0.50" value={row.baseRate} oninput={(event) => updateRate(row.id, 'baseRate', (event.currentTarget as HTMLInputElement).value)}/></label><label for={`historical-rate-${row.id}-fidelity`}><span>Rate {index + 1} fidelity premium (%)</span><input id={`historical-rate-${row.id}-fidelity`} aria-label={`Rate ${index + 1} fidelity premium (%)`} type="number" step="0.01" min="0" placeholder="e.g. 1.50" value={row.fidelityPremium} oninput={(event) => updateRate(row.id, 'fidelityPremium', (event.currentTarget as HTMLInputElement).value)}/></label><button class="delete-button" type="button" aria-label={`Remove historical rate ${index + 1}`} disabled={rates.length === 1} onclick={() => removeRate(row.id)}>×</button></div>{/each}</div>
-      <div class="controls historical-rate-actions"><button class="quiet" type="button" disabled={importing} onclick={() => void importRatesFromClipboard()}>{importing ? 'Importing…' : 'Import from clipboard'}</button><button class="quiet" type="button" onclick={addRate}>Add rate change</button></div>
+      <div class="controls historical-rate-actions"><button class="historical-add-rate" type="button" onclick={addRate}>Add rate change</button><button class="quiet historical-import-button" type="button" disabled={importing} onclick={() => void importRatesFromClipboard()}>{importing ? 'Importing…' : 'Import from clipboard'}</button></div>
       {#if pendingImport}
         <div class="historical-import-mapping" role="dialog" aria-labelledby="historical-import-mapping-heading">
           <h4 id="historical-import-mapping-heading">Map clipboard columns</h4>
@@ -127,13 +126,48 @@
           <div class="controls historical-import-actions"><button type="button" onclick={confirmMappedImport}>Import mapped rates</button><button class="quiet" type="button" onclick={cancelMappedImport}>Cancel</button></div>
         </div>
       {/if}
-    </div>
-  </details>
+  </div>
   {#if calculated && error}<p class="historical-error" role="alert">{error}</p>{/if}
 </section>
 
 <style>
-  .historical-savings { display: grid; gap: 16px; }.historical-intro { margin: 0; color: #617169; font-size: .82rem; line-height: 1.5; }.historical-rate-row label { display: block; min-width: 0; color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }.historical-rate-head, .historical-rate-row { display: grid; grid-template-columns: 1.15fr 1fr 1fr 40px; align-items: center; gap: 12px; }.historical-rate-head { color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }.historical-rate-row { margin-top: 10px; }.historical-rate-row input { font-family: inherit; font-size: 1rem; font-weight: 400; letter-spacing: normal; text-transform: none; }.historical-rate-row label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }.historical-rate-actions { justify-content: center; flex-wrap: wrap; margin-top: 14px; }.historical-error { margin: 0; border-left: 3px solid #a52f24; background: #fff5f3; padding: 10px 12px; color: #8d2f27; font-size: .85rem; }
+  .historical-savings { display: grid; gap: 16px; }.historical-intro { margin: 0; color: #617169; font-size: .82rem; line-height: 1.5; }.historical-rate-row label { display: block; min-width: 0; color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }.historical-rate-head, .historical-rate-row { display: grid; grid-template-columns: 1.15fr 1fr 1fr 40px; align-items: center; gap: 12px; }.historical-rate-head { color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }.historical-rate-row { margin-top: 10px; }.historical-rate-row input { font-family: inherit; font-size: 1rem; font-weight: 400; letter-spacing: normal; text-transform: none; }.historical-rate-row label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }.historical-rate-actions { flex-wrap: wrap; margin-top: 14px; }.historical-error { margin: 0; border-left: 3px solid #a52f24; background: #fff5f3; padding: 10px 12px; color: #8d2f27; font-size: .85rem; }
   .historical-import-mapping { display: grid; gap: 12px; margin-top: 16px; border: 1px solid #dce5df; border-radius: 8px; padding: 14px; background: #f7faf8; }.historical-import-mapping h4, .historical-import-mapping p { margin: 0; }.historical-import-mapping h4 { color: #173d2d; font-size: .95rem; }.historical-import-mapping p { color: #617169; font-size: .82rem; }.historical-import-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }.historical-import-fields label { display: grid; gap: 5px; color: #64766d; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }.historical-import-fields select { min-width: 0; padding: 9px; font: inherit; color: #26332d; text-transform: none; }.historical-import-preview { overflow-x: auto; border: 1px solid #e1e7e3; background: white; }.historical-import-preview-row { display: grid; grid-template-columns: repeat(var(--historical-import-columns, 1), minmax(100px, 1fr)); min-width: max-content; }.historical-import-preview-row span { padding: 7px 9px; border-right: 1px solid #e1e7e3; font-size: .78rem; }.historical-import-preview-head { background: #edf3ef; color: #52675c; font-weight: 700; }.historical-import-actions { justify-content: flex-start; margin-top: 0; }
   @media (max-width: 760px) { .historical-rate-head { display: none; }.historical-rate-row { grid-template-columns: minmax(0, 1fr) 40px; padding: 10px; border: 1px solid #e1e7e3; border-radius: 7px; background: #fbfcfb; }.historical-rate-row label { grid-column: 1; }.historical-rate-row label > span { position: static; display: block; width: auto; height: auto; margin-bottom: 6px; overflow: visible; clip: auto; }.historical-rate-row .delete-button { grid-column: 2; grid-row: 1 / span 3; height: 42px; align-self: center; }.historical-import-fields { grid-template-columns: 1fr; } }
+
+  /* Compact ledger treatment shared in spirit with the cash-flow editor. */
+  .historical-rate-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; border-bottom: 1px solid var(--v2-border, #d8e1db); padding: 0 11px; color: var(--v2-navy, #173d2d); }
+  .historical-rate-heading h4 { margin: 0; font-size: .77rem; font-weight: 700; }
+  .historical-rate-heading small { color: var(--v2-muted, #617169); font-size: .68rem; font-weight: 500; }
+  .historical-rate-head { margin: 0; border: 1px solid var(--v2-border, #d8e1db); border-bottom: 0; border-radius: 4px 4px 0 0; padding: 8px 10px 7px; background: #f7faf8; }
+  .historical-rate-row { margin: 0; border: 1px solid var(--v2-border, #d8e1db); border-bottom: 0; padding: 5px 10px; background: var(--v2-surface, #fff); }
+  .historical-rate-row:last-child { border-bottom: 1px solid var(--v2-border, #d8e1db); border-radius: 0 0 4px 4px; }
+  .historical-rate-row + .historical-rate-row { border-top-color: #e5ebe7; }
+  .historical-rate-row input { min-height: 30px; border-color: transparent; border-radius: 3px; background: transparent; padding: 0 5px; }
+  .historical-rate-row input:focus { border-color: var(--v2-green, #24644d); background: #fff; }
+  .historical-rate-row input[type="number"] { text-align: right; }
+  .historical-rate-row .delete-button { min-height: 30px; border-color: transparent; background: transparent; font-size: 1.2rem; }
+  .historical-rate-row .delete-button:hover { border-color: #dfbdb6; background: #faeae7; }
+  .historical-rate-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 9px; }
+  .historical-import-button { justify-self: start; margin-bottom: 8px; }
+  .historical-add-rate { width: 100%; min-height: 38px; border: 1px dashed var(--v2-green, #24644d); background: transparent; color: var(--v2-green, #24644d); }
+  .historical-add-rate::before { content: '+ '; }
+  .historical-add-rate:hover { background: #f1f7f3; }
+  @media (min-width: 761px) {
+    .historical-rate-head, .historical-rate-row { grid-template-columns: minmax(120px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 6px; }
+    .historical-rate-head { min-height: 32px; align-items: center; letter-spacing: .06em; }
+    .historical-rate-head > span:nth-child(2), .historical-rate-head > span:nth-child(3) { text-align: right; }
+    .historical-rate-row > label:nth-child(2), .historical-rate-row > label:nth-child(3) { text-align: right; }
+    .historical-rate-row .delete-button { justify-self: center; }
+  }
+  @media (min-width: 761px) and (max-width: 1300px) {
+    .historical-rate-head, .historical-rate-row { grid-template-columns: minmax(112px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 24px; gap: 4px; }
+    .historical-rate-row { padding: 5px 6px; }
+  }
+  @media (max-width: 760px) {
+    .historical-rate-row { margin-bottom: 8px; border-bottom: 1px solid var(--v2-border, #d8e1db); border-radius: 4px; padding: 10px; }
+    .historical-rate-row + .historical-rate-row { border-top-color: var(--v2-border, #d8e1db); }
+    .historical-rate-row input { min-height: 38px; border-color: var(--v2-border, #d8e1db); background: #fff; padding: 0 8px; }
+    .historical-rate-actions { margin-top: 10px; }
+  }
 </style>

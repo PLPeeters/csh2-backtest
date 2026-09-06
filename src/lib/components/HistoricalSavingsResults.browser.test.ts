@@ -29,6 +29,30 @@ const display = (scenario: 'monthly' | 'lumpSum' = 'monthly') => ({
 describe('historical savings result placement', () => {
   beforeEach(() => localStorage.clear());
 
+  it('shows a clear next step before the historical calculation has run', async () => {
+    render(HistoricalSavingsResults);
+    await expect.element(page.getByRole('heading', { name: 'Run a historical savings calculation' })).toBeVisible();
+    await expect.element(page.getByText(/Configure the historical rates and settings/)).toBeVisible();
+    await expect.element(page.getByText(/Calculate historical savings/)).toBeVisible();
+    expect(page.getByRole('heading', { name: 'Backtest result' }).query()).toBeNull();
+  });
+
+  it('keeps the empty state contained at desktop, tablet, and mobile widths', async () => {
+    render(HistoricalSavingsResults);
+    const emptyState = page.getByRole('heading', { name: 'Run a historical savings calculation' }).element().closest('.historical-results-empty')!;
+    try {
+      for (const width of [1280, 1024, 390]) {
+        await page.viewport(width, 720);
+        const bounds = emptyState.getBoundingClientRect();
+        expect(bounds.left).toBeGreaterThanOrEqual(0);
+        expect(bounds.right).toBeLessThanOrEqual(document.documentElement.clientWidth);
+        expect(emptyState.scrollWidth).toBeLessThanOrEqual(emptyState.clientWidth);
+      }
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
   it('keeps the full result wrapper within the viewport at narrow widths', async () => {
     await page.viewport(390, 844);
     render(HistoricalSavingsResults, { display: display() });
@@ -57,19 +81,23 @@ describe('historical savings result placement', () => {
 
   it('labels terminal values against the selected historical end date', async () => {
     render(HistoricalSavingsResults, { display: display() });
+    await page.getByText('Costs and calculation details', { exact: true }).click();
     await expect.element(page.getByText('Net value at end date', { exact: true })).toBeVisible();
-    await expect.element(page.getByText('Taxes if sold at end date', { exact: true })).toBeVisible();
-    await expect.element(page.getByText(/Paid .* if sold at end date/)).toBeVisible();
+    await expect.element(page.getByText('At end date', { exact: true })).toBeVisible();
+    await expect.element(page.getByText('Already paid', { exact: true })).toBeVisible();
     expect(page.getByText('Net value if sold today', { exact: true }).query()).toBeNull();
   });
 
   it('labels acquired premiums that are still awaiting credit explicitly', async () => {
     render(HistoricalSavingsResults, { display: display() });
+    await page.getByText('Costs and calculation details', { exact: true }).click();
     await expect.element(page.getByText('Fidelity premiums acquired, pending credit', { exact: true })).toBeVisible();
   });
 
   it('places historical interest metric cards before the transaction ledger', async () => {
     render(HistoricalSavingsResults, { display: display() });
+    await page.getByText('Costs and calculation details', { exact: true }).click();
+    await page.getByText('Transaction ledger', { exact: true }).nth(0).click();
     const heading = page.getByRole('heading', { name: 'Historical savings interest details' }).element();
     const details = heading.closest('.historical-savings-details')!;
     const ledger = page.getByRole('heading', { name: 'Transaction ledger' }).element().closest('section')!;

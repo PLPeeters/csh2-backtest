@@ -570,21 +570,26 @@ export function assessFidelityPremiumTimings(prices, valuationDate, options, fid
 }
 
 /**
- * Estimates a break-even date only when the selected CSH2 rate scenario is positive.
- * @param {{ csh2AnnualRatePercent?: number, maximumProjectionDays?: number }} [projection]
+ * Finds the first crossover within the already-rendered portfolio-value projection.
+ * Both inputs must be daily euro-value series on the same dates; no extrapolation is
+ * performed beyond their shared horizon.
  */
-export function estimateBreakEvenDate(flows, prices, valuationDate, options, projection = {}) {
-  const { csh2AnnualRatePercent, maximumProjectionDays = 36525 } = projection;
-  const current = runBacktest(flows, prices, valuationDate, options);
-  if (current.missedAmount >= 0) return undefined;
-  const projectionRate = projectedCsh2Growth(prices, valuationDate, csh2AnnualRatePercent);
-  if (!projectionRate || projectionRate.dailyGrowthFactor <= 1) return undefined;
-  const projectedPrices = { ...prices };
-  for (let day = 1; day <= maximumProjectionDays; day += 1) {
-    const date = dateAfter(projectionRate.valuation.date, day);
-    projectedPrices[date] = { close: projectionRate.valuation.price * projectionRate.dailyGrowthFactor ** day };
-    const projected = runBacktest(flows, projectedPrices, date, options);
-    if (projected.missedAmount >= 0) return { date, days: day, csh2AnnualRatePercent: projectionRate.csh2AnnualRatePercent };
+export function findProjectedCrossover(csh2, account, valuationDate) {
+  const accountByDate = new Map(account.map((point) => [point.date, point.value]));
+  const initial = csh2.find((point) => point.date === valuationDate);
+  const initialAccount = accountByDate.get(valuationDate);
+  if (!initial || !Number.isFinite(initial.value) || !Number.isFinite(initialAccount)) return undefined;
+  const initialDifference = initial.value - initialAccount;
+  if (Math.abs(initialDifference) < 0.005) return undefined;
+  const trailing = initialDifference < 0 ? 'csh2' : 'account';
+  for (const point of csh2) {
+    if (point.date <= valuationDate || !Number.isFinite(point.value)) continue;
+    const accountValue = accountByDate.get(point.date);
+    if (!Number.isFinite(accountValue)) continue;
+    const difference = point.value - accountValue;
+    if ((trailing === 'csh2' && difference >= -0.005) || (trailing === 'account' && difference <= 0.005)) {
+      return { date: point.date, days: daysBetween(valuationDate, point.date), trailing };
+    }
   }
   return undefined;
 }
