@@ -81,6 +81,15 @@ The Svelte frontend lives in `src/`. The framework-independent calculation API i
 `src/backtest.mjs`, with its implementation split by responsibility under
 `src/backtest/`.
 
+Styling uses Tailwind CSS 4 through `@tailwindcss/vite` in both the application
+and browser-test builds. Use utility classes in Svelte components; shared colors
+are exposed by the theme in `src/app.css`. That file retains native element
+defaults and contextual, interactive, and chart styles. Tailwind Preflight is
+intentionally omitted to preserve the existing form and typography defaults.
+Keep utility names complete in dynamic class expressions so Tailwind can detect
+them. Existing semantic classes also serve as contextual selectors and test hooks.
+The browser suite loads the stylesheet once through `test/browser-setup.ts`.
+
 ## Important limitations
 
 This project is an educational estimate, not financial or tax advice. It uses

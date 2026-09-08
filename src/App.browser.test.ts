@@ -1,8 +1,8 @@
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
-import './app.css';
 import App from './App.svelte';
+import publication from './assets/data/current-rate-model.json';
 import { createBacktestController } from './lib/state/backtest.svelte';
 import { duration } from './lib/services/formatters';
 import { createFlowId } from './lib/services/storage';
@@ -128,17 +128,29 @@ describe('CSH2 application inputs', () => {
 
   it('focuses the current-account base rate from the rate snapshot', async () => {
     render(App);
-    await page.getByRole('button', { name: 'Edit rate', exact: true }).click();
+    const editRate = page.getByRole('button', { name: 'Edit rate', exact: true });
+    const editRateButton = editRate.element();
+    const editRateIcon = editRateButton.querySelector('svg');
+    expect(editRateButton.textContent?.trim()).toBe('');
+    expect(editRateIcon?.getAttribute('aria-hidden')).toBe('true');
+    expect(editRateIcon?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(editRateButton.getBoundingClientRect().width).toBeGreaterThan(0);
+    expect(editRateButton.getBoundingClientRect().height).toBeGreaterThan(0);
+    await editRate.click();
     expect((document.activeElement as HTMLInputElement | null)?.id).toBe('current-account-base-rate');
   });
 
   it('shows the CSH2 model uncertainty and opens its methodology from the rate snapshot', async () => {
     render(App);
     const currentRates = page.getByRole('region', { name: 'Current rates' });
+    const displayedModelError = new Intl.NumberFormat('en-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      .format(publication.model.modelErrorAnnualRatePercent)
+      .replace(/[,.]/, '[,.]');
     await expect.element(currentRates.getByText(/Estimated CSH2/)).toBeVisible();
-    await expect.element(currentRates.getByText(/±\s*0[,.]11 p\.p\./)).toBeVisible();
     await expect.element(currentRates.getByText('After tax', { exact: true })).toBeVisible();
     const csh2Estimate = currentRates.getByText(/Estimated CSH2/).element().closest('.rate-strip-csh2')!;
+    const grossRate = csh2Estimate.querySelector('.rate-strip-value')!;
+    expect(grossRate.textContent).toMatch(new RegExp(`±\\s*${displayedModelError} p\\.p\\.`));
     const csh2Label = csh2Estimate.querySelector('.rate-strip-label')!;
     const methodologyButton = currentRates.getByRole('button', { name: 'How estimated CSH2 is calculated' }).element();
     const grossEstimateBeforeTaxChange = csh2Estimate.querySelector('.rate-strip-value')!.textContent;
@@ -155,7 +167,7 @@ describe('CSH2 application inputs', () => {
     await page.getByRole('button', { name: 'Close methodology' }).click();
   });
 
-  it('keeps gain-tax choices fully visible when the workspace stacks', async () => {
+  it('keeps backtest and gain-tax choices contained as the workspace stacks', async () => {
     try {
       render(App);
       for (const width of [900, 390]) {
@@ -163,14 +175,26 @@ describe('CSH2 application inputs', () => {
         const workspace = document.querySelector('.primary-workspace') as HTMLElement;
         expect(getComputedStyle(workspace).gridTemplateColumns.split(' ')).toHaveLength(1);
         const picker = page.getByRole('group', { name: 'CSH2 gain tax regime' }).element() as HTMLElement;
-        const bounds = picker.getBoundingClientRect();
-        const buttons = [...picker.querySelectorAll('button')];
-        expect(getComputedStyle(picker).display).toBe('flex');
+        const setupTabs = page.getByRole('tablist', { name: 'Backtest type' }).element() as HTMLElement;
+        const selectors = [picker, setupTabs];
+        const isMobile = width <= 600;
+        for (const selector of selectors) {
+          const bounds = selector.getBoundingClientRect();
+          const buttons = [...selector.querySelectorAll('button')] as HTMLElement[];
+          expect(getComputedStyle(selector).display).toBe(isMobile ? 'grid' : 'flex');
+          expect(bounds.left).toBeGreaterThanOrEqual(0);
+          expect(bounds.right).toBeLessThanOrEqual(document.documentElement.clientWidth);
+          expect(buttons.length).toBeGreaterThan(1);
+          expect(buttons.every((button) => {
+            const buttonBounds = button.getBoundingClientRect();
+            return buttonBounds.left >= bounds.left && buttonBounds.right <= bounds.right && buttonBounds.width > 0 && buttonBounds.height >= (isMobile ? 42 : 0) && button.scrollWidth <= button.clientWidth;
+          })).toBe(true);
+          expect(buttons.slice(1).every((button, index) => {
+            const previousBounds = buttons[index].getBoundingClientRect();
+            return isMobile ? button.getBoundingClientRect().top >= previousBounds.bottom : button.getBoundingClientRect().top < previousBounds.bottom;
+          })).toBe(true);
+        }
         expect(getComputedStyle(picker).overflow).toBe('visible');
-        expect(buttons.every((button) => {
-          const buttonBounds = button.getBoundingClientRect();
-          return buttonBounds.left >= bounds.left && buttonBounds.right <= bounds.right && button.scrollWidth <= button.clientWidth;
-        })).toBe(true);
       }
     } finally {
       await page.viewport(1280, 720);
@@ -196,6 +220,37 @@ describe('CSH2 application inputs', () => {
         const buttonBounds = button.getBoundingClientRect();
         return buttonBounds.left >= pickerBounds.left && buttonBounds.right <= pickerBounds.right && button.scrollWidth <= button.clientWidth;
       })).toBe(true);
+    } finally {
+      await page.viewport(1280, 720);
+    }
+  });
+
+  it('keeps the mobile header and cash-flow actions aligned', async () => {
+    try {
+      render(App);
+      const header = document.querySelector('.app-header') as HTMLElement;
+      const context = header.querySelector('.header-context') as HTMLElement;
+      const privacyNote = context.querySelector('.privacy-note') as HTMLElement;
+      const headerDot = context.querySelector('.header-dot') as HTMLElement;
+      const details = header.querySelector('.header-details') as HTMLElement;
+      const flowRow = document.querySelector('.flow-row') as HTMLElement;
+      const interestLabel = flowRow.querySelector('.interest-label') as HTMLElement;
+      const deleteButton = flowRow.querySelector('.delete-button') as HTMLElement;
+      for (const width of [390, 601, 760]) {
+        await page.viewport(width, 844);
+        expect(getComputedStyle(header).gridTemplateColumns.split(' ')).toHaveLength(1);
+        expect(getComputedStyle(context).paddingLeft).toBe('0px');
+        await expect.element(headerDot).not.toBeVisible();
+        expect(Math.abs(privacyNote.getBoundingClientRect().left - header.getBoundingClientRect().left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(details.getBoundingClientRect().left - header.getBoundingClientRect().left)).toBeLessThanOrEqual(1);
+        await expect.element(interestLabel).toBeVisible();
+        expect(getComputedStyle(deleteButton).gridRow).toBe('2');
+        expect(deleteButton.getBoundingClientRect().left).toBeGreaterThan(flowRow.getBoundingClientRect().left);
+      }
+      await page.viewport(1280, 720);
+      expect(getComputedStyle(header).gridTemplateColumns.split(' ')).toHaveLength(3);
+      await expect.element(headerDot).toBeVisible();
+      await expect.element(interestLabel).not.toBeVisible();
     } finally {
       await page.viewport(1280, 720);
     }

@@ -141,7 +141,7 @@
   });
 </script>
 
-<div class="holding-advantage-chart">
-  <p class="holding-advantage-measure">Relative advantage versus best savings account (%)</p>
-  <div bind:this={host} class="holding-advantage-chart-host" role="img" aria-label={ariaLabel}></div>
+<div class="holding-advantage-chart w-full">
+  <p class="holding-advantage-measure mt-0 mr-16.5 mb-1 ml-0 text-[#647a71] text-[0.7rem] font-bold text-right [@media(width<=760px)]:mr-14.5">Relative advantage versus best savings account (%)</p>
+  <div bind:this={host} class="holding-advantage-chart-host w-full h-70 [@media(width<=760px)]:h-65" role="img" aria-label={ariaLabel}></div>
 </div>

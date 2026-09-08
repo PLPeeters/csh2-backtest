@@ -12,36 +12,36 @@
   let hasProvisionalTail = $derived(selectedSeries && [...selectedSeries.csh2, ...selectedSeries.overnight].some((point) => point.cpiStatus === 'extrapolated'));
 </script>
 
-<section class="benchmark-history-section" aria-labelledby="benchmark-heading">
-  <section class="panel chart-panel benchmark-chart-panel">
-    <div class="section-title">
-      <div class="benchmark-title">
-        <p class="eyebrow">Underlying benchmark</p>
+<section class="benchmark-history-section mb-8" aria-labelledby="benchmark-heading">
+  <section class="panel chart-panel benchmark-chart-panel [background:var(--surface)] mx-0 my-4.5 p-5.5 border border-solid [border-color:var(--line)] rounded-[8px] [@media(width<=760px)]:p-5 [@media(760px<width<=1050px)]:p-4.5">
+    <div class="section-title flex items-center justify-between pb-5 gap-5 [@media(width<=760px)]:items-start [@media(width<=760px)]:flex-col [@media(width<=760px)]:gap-3">
+      <div class="benchmark-title grow shrink basis-auto min-w-0">
+        <p class="eyebrow mb-1.5 text-muted text-[0.65rem] font-bold tracking-[0.09em] uppercase">Underlying benchmark</p>
         <h2 id="benchmark-heading">{controller.direction === 'forward' ? 'Forward' : 'Backward'} annualized returns · {periods[period].label}</h2>
       </div>
-      <div class="benchmark-control">
-        <div class="benchmark-mode-picker" role="group" aria-label="Return direction">
+      <div class="benchmark-control flex grow-0 shrink-0 basis-auto items-stretch justify-end gap-2 [@media(width<=760px)]:justify-start [@media(width<=760px)]:w-full [@media(width<=760px)]:flex-wrap">
+        <div class="benchmark-mode-picker flex overflow-x-auto bg-white border border-solid border-[#cbd7d0] rounded-[7px]" role="group" aria-label="Return direction">
           <button type="button" aria-pressed={controller.direction === 'backward'} onclick={() => controller.setDirection('backward')}>Backward</button>
           <button type="button" aria-pressed={controller.direction === 'forward'} onclick={() => controller.setDirection('forward')}>Forward</button>
         </div>
-        <div class="benchmark-period-picker" role="group" aria-label={`${controller.direction === 'forward' ? 'Forward' : 'Backward'} comparison period`}>
+        <div class="benchmark-period-picker flex overflow-x-auto bg-white border border-solid border-[#cbd7d0] rounded-[7px]" role="group" aria-label={`${controller.direction === 'forward' ? 'Forward' : 'Backward'} comparison period`}>
           {#each (controller.direction === 'backward' ? ['1m', '3m', '6m', '1y', '2y', '5y'] : ['1m', '3m', '6m', '1y']) as value}
             <button type="button" aria-pressed={period === value} onclick={() => controller.setPeriod(value as '1y')}>
               {periods[value as keyof typeof periods].label}
             </button>
           {/each}
         </div>
-        <div class="benchmark-tax-picker" role="group" aria-label="Tax treatment">
+        <div class="benchmark-tax-picker flex overflow-x-auto bg-white border border-solid border-[#cbd7d0] rounded-[7px]" role="group" aria-label="Tax treatment">
           <button type="button" aria-pressed={!controller.benchmarkAfterTax} onclick={() => controller.setBenchmarkAfterTax(false)}>Gross</button>
           <button type="button" aria-pressed={controller.benchmarkAfterTax} onclick={() => controller.setBenchmarkAfterTax(true)}>After tax</button>
         </div>
       </div>
     </div>
-    <p class="chart-key">
+    <p class="chart-key flex flex-wrap mt-2.5 mb-1 text-[#5b7066] text-[0.8rem] mx-0 gap-4">
       <span class="chart-key-csh2">CSH2</span>
       <span class="chart-key-estr">Euro overnight benchmark</span>
     </p>
-    <p class="chart-explanation benchmark-explanation">
+    <p class="chart-explanation benchmark-explanation mt-2.5 mb-0 text-[#5b7066] text-[0.8rem] leading-[1.45] mx-0">
       {#if controller.direction === 'forward'}
         Each point shows the CSH2 and euro overnight return over the following {periods[period].description}. Use the date to compare a savings-account rate available then with what actually followed.
       {:else}
@@ -52,12 +52,12 @@
       {/if}
     </p>
     {#if hasProvisionalTail}
-      <p class="chart-explanation provisional-cpi-note">
+      <p class="chart-explanation provisional-cpi-note mt-2.5 mb-0 text-[#5b7066] text-[0.8rem] leading-[1.45] mx-0">
         The latest inflation-adjusted return tail is provisional because CPI after the latest observed monthly anchor is extrapolated from trailing 12-month inflation.
       </p>
     {/if}
     {#if controller.benchmarkAfterTax}
-      <p class="chart-explanation tax-explanation">
+      <p class="chart-explanation tax-explanation text-[#5b7066] text-[0.8rem] leading-[1.45] mx-0 my-2.5">
         CSH2 includes buy and sell TOB plus {benchmarkUsesReyndersTax ? '30% Reynders Tax' : '10% CGT from 2026'}
         {#if appliesCgtExemption}
           , applying the annual CGT exemption to €{totalSavingsAmount.toLocaleString('nl-BE')}
@@ -67,7 +67,7 @@
         &#32;The euro overnight benchmark is unchanged.
       </p>
     {/if}
-    <div class="chart-update-container">
+    <div class="chart-update-container relative">
       {#if selectedSeries}
         <LineChart
           data={selectedSeries}
@@ -77,10 +77,10 @@
           ariaLabel={`${controller.direction === 'forward' ? 'Forward' : 'Backward'} annualized CSH2 return compared with the Euro overnight benchmark over ${periods[period].description}`}
         />
       {:else}
-        <p class="chart-loading">{controller.benchmarkStatus.message || 'Preparing benchmark history…'}</p>
+        <p class="chart-loading grid min-h-72.5 place-items-center text-[#5b7066] text-[0.9rem] m-0">{controller.benchmarkStatus.message || 'Preparing benchmark history…'}</p>
       {/if}
       {#if controller.benchmarkStatus.kind === 'loading' && selectedSeries}
-        <div class="chart-update-overlay" role="status">Updating annualized returns…</div>
+        <div class="chart-update-overlay absolute z-2 grid place-items-center bg-[color-mix(in_srgb,_#fff_78%,_transparent)] text-accent-dark text-[0.9rem] font-bold rounded-[8px]" role="status">Updating annualized returns…</div>
       {/if}
     </div>
   </section>

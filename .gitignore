@@ -9,3 +9,4 @@ playwright-report/
 test-results/
 .vitest-attachments/
 __screenshots__/
+.scratch/

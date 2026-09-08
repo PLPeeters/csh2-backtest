@@ -195,18 +195,11 @@
     return () => { observer.disconnect(); if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame); resizeFrame = undefined; chart?.unsubscribeCrosshairMove(updateLegend); crossoverMarkers?.detach(); chart?.remove(); chart = undefined; csh2Series = undefined; overnightSeries = undefined; accountSeries = undefined; projectedCsh2Series = undefined; projectedOvernightSeries = undefined; projectedAccountSeries = undefined; crossoverMarkers = undefined; calendarSeries = undefined; loadedData = undefined; appliedFrom = undefined; appliedTo = undefined; appliedCrossoverDate = undefined; legendValues = []; };
   });
 </script>
-<div bind:this={host} class="chart" role="img" aria-label={crossoverDate ? `${ariaLabel}. Projected crossover on ${formattedCrossoverDate(crossoverDate)}.` : ariaLabel}>
-  <div class="chart-legend" aria-hidden="true">
-    {#if legendDate}<span class="chart-legend-entry chart-legend-date">{legendDate}</span>{/if}
+<div bind:this={host} class="chart w-full h-72.5 relative" role="img" aria-label={crossoverDate ? `${ariaLabel}. Projected crossover on ${formattedCrossoverDate(crossoverDate)}.` : ariaLabel}>
+  <div class="chart-legend absolute z-4 top-2 left-2.5 flex flex-col items-start text-[0.8rem] font-semibold pointer-events-none gap-[3px]" aria-hidden="true">
+    {#if legendDate}<span class="chart-legend-entry chart-legend-date bg-white text-[#5b746c] px-1 py-0.5">{legendDate}</span>{/if}
     {#each legendValues as item}
-      <span class="chart-legend-entry" style={`color: ${item.color}`}>{item.label} {item.parenthesize ? `(${item.value})` : item.value}</span>
+      <span class="chart-legend-entry bg-white px-1 py-0.5" style={`color: ${item.color}`}>{item.label} {item.parenthesize ? `(${item.value})` : item.value}</span>
     {/each}
   </div>
 </div>
-
-<style>
-  .chart { position: relative; }
-  .chart-legend { position: absolute; z-index: 4; top: 8px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 0.8rem; font-weight: 600; pointer-events: none; }
-  .chart-legend-entry { padding: 2px 4px; background: white; }
-  .chart-legend-date { color: #5b746c; }
-</style>

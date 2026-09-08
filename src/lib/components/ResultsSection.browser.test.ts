@@ -1,7 +1,6 @@
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { describe, expect, it } from 'vitest';
-import '../../app.css';
 import ResultsSection from './ResultsSection.svelte';
 import FutureOutlookSection from './FutureOutlookSection.svelte';
 import type { BacktestController } from '../state/backtest.svelte';

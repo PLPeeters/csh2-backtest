@@ -1,7 +1,6 @@
 import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import '../../app.css';
 import HistoricalSavingsSection from './HistoricalSavingsSection.svelte';
 import { createBacktestController } from '../state/backtest.svelte';
 import type { CalculationSettings, MarketDataBundle } from '../types';

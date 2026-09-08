@@ -156,32 +156,32 @@
   });
 </script>
 
-<div bind:this={chartElement} class="holding-period-chart" role="img" aria-label={ariaLabel}>
-  <div class="holding-period-rows" aria-hidden="true">
+<div bind:this={chartElement} class="holding-period-chart w-full pt-3 pb-0.5 px-1 [@media(width<=760px)]:px-0" role="img" aria-label={ariaLabel}>
+  <div class="holding-period-rows grid gap-3.5" aria-hidden="true">
     {#each milestones as milestone, milestoneIndex}
-      <div class="holding-period-row">
-        <span class="holding-period-row-label">{milestone.name}</span>
-        <div class="holding-period-track" style:height={`${trackHeight(milestone, milestoneIndex)}px`}>
-          {#if hasTimeline(milestone)}<span class="holding-period-track-line"></span>{/if}
+      <div class="holding-period-row grid grid-cols-[160px_minmax(0px,_1fr)] items-center gap-4.5 [@media(width<=760px)]:grid-cols-[112px_minmax(0px,_1fr)] [@media(width<=760px)]:gap-2.5">
+        <span class="holding-period-row-label text-accent-dark text-[0.82rem] font-[650] [@media(width<=760px)]:text-[0.72rem]">{milestone.name}</span>
+        <div class="holding-period-track relative h-14.5" style:height={`${trackHeight(milestone, milestoneIndex)}px`}>
+          {#if hasTimeline(milestone)}<span class="holding-period-track-line absolute top-[50%] left-0 h-[3px] w-full bg-[#dfe7e2] rounded-[2px]"></span>{/if}
           {#each milestone.matchingIntervals ?? [] as interval}
-            <span class={`holding-period-progress holding-period-${milestone.kind}`} style:left={positionForDays(interval.startDay)} style:width={positionForDays(interval.endDay - interval.startDay)}></span>
+            <span class={`absolute top-[50%] left-0 h-1 rounded-[2px] holding-period-progress holding-period-${milestone.kind}`} style:left={positionForDays(interval.startDay)} style:width={positionForDays(interval.endDay - interval.startDay)}></span>
           {/each}
           {#each milestoneMatches(milestone) as match, matchIndex}
             {@const facesLeft = labelFacesLeft(milestoneIndex, matchIndex)}
             {@const below = labelIsBelow(milestoneIndex, matchIndex)}
-            <span class={`holding-period-marker holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)}></span>
-            {#if match.showLabel !== false}<span class:below class={`holding-period-flag-pole holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`}></span><span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below class={`holding-period-value holding-period-${milestone.kind}`} style:left={!facesLeft ? flagLeftForDays(match.days) : undefined} style:right={facesLeft ? flagRightForDays(match.days) : undefined} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={!below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}>{match.label}</span>{/if}
+            <span class={`absolute top-[50%] w-[3px] h-4 holding-period-marker holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)}></span>
+            {#if match.showLabel !== false}<span class:below class={`absolute z-1 top-[calc(50%_-_var(--flag-offset)_-_1px)] w-[3px] h-[calc(var(--flag-offset)_+_1px)] [background:var(--flag-color)] pointer-events-none holding-period-flag-pole holding-period-${milestone.kind}`} style:left={markerPositionForDays(match.days)} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`}></span><span use:registerLabel={labelKey(milestoneIndex, matchIndex)} class:faces-left={facesLeft} class:below class={`absolute z-2 bottom-[calc(50%_+_10px)] [background:var(--flag-background)] [color:var(--flag-color)] text-[0.76rem] font-normal leading-[1.35] whitespace-nowrap px-1.5 py-[1px] border border-solid [border-color:var(--flag-color)] rounded-[3px] [@media(width<=760px)]:text-[0.68rem] holding-period-value holding-period-${milestone.kind}`} style:left={!facesLeft ? flagLeftForDays(match.days) : undefined} style:right={facesLeft ? flagRightForDays(match.days) : undefined} style:--flag-offset={`${labelOffset(milestoneIndex, matchIndex)}px`} style:bottom={!below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined} style:top={below ? `calc(50% + ${labelOffset(milestoneIndex, matchIndex)}px)` : undefined}>{match.label}</span>{/if}
           {/each}
-          {#if !milestoneMatches(milestone).length}<span class="holding-period-unavailable">{milestone.label}</span>{/if}
+          {#if !milestoneMatches(milestone).length}<span class="holding-period-unavailable absolute top-[50%] left-2 text-[#77877f] text-[0.78rem] italic">{milestone.label}</span>{/if}
         </div>
       </div>
     {/each}
-    <div class="holding-period-axis-row">
-      <span class="holding-period-axis-title">Months</span>
-      <div class="holding-period-axis">
+    <div class="holding-period-axis-row grid grid-cols-[160px_minmax(0px,_1fr)] [align-items:start] gap-4.5 [@media(width<=760px)]:grid-cols-[112px_minmax(0px,_1fr)] [@media(width<=760px)]:gap-2.5">
+      <span class="holding-period-axis-title text-[#647a71] text-[0.72rem] font-bold text-right uppercase">Months</span>
+      <div class="holding-period-axis relative h-7 [border-top-width:1px] [border-top-style:solid] [border-top-color:#aebfb6]">
         {#each ticks as tick, index}
-          <span class="holding-period-tick" style:left={`${(tick / scaleMaximum) * 100}%`}></span>
-          <span class:first={index === 0} class:last={index === ticks.length - 1} class="holding-period-axis-label" style:left={`${(tick / scaleMaximum) * 100}%`}>{tick.toLocaleString('en-BE')}</span>
+          <span class="holding-period-tick absolute top-[-1px] w-[1px] h-1.5 bg-[#aebfb6]" style:left={`${(tick / scaleMaximum) * 100}%`}></span>
+          <span class:first={index === 0} class:last={index === ticks.length - 1} class="holding-period-axis-label absolute top-2 text-[#647a71] text-[0.72rem]" style:left={`${(tick / scaleMaximum) * 100}%`}>{tick.toLocaleString('en-BE')}</span>
         {/each}
       </div>
     </div>
