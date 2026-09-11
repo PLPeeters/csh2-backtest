@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "valuationDate": "2026-09-10",
+  "valuationDate": "2026-09-11",
   "sourceData": {
-    "prices": "200a45a67acb59ce",
+    "prices": "1515766b35e1a7fd",
     "rates": "4eff1abacce88b98"
   },
   "configuration": {
@@ -11,10 +11,10 @@
     "validationStartDate": "2024-01-01"
   },
   "model": {
-    "valuationDate": "2026-09-10",
+    "valuationDate": "2026-09-11",
     "trendStartDate": "2026-03-16",
-    "trendDays": 178,
-    "trendObservations": 125,
+    "trendDays": 179,
+    "trendObservations": 126,
     "trendExamples": [
       {
         "date": "2026-03-16",
@@ -29,12 +29,6 @@
         "gapPercent": 0.01304545
       },
       {
-        "date": "2026-09-08",
-        "csh2Index": 101.21524806,
-        "overnightBenchmarkIndex": 101.00762276,
-        "gapPercent": 0.20555409
-      },
-      {
         "date": "2026-09-09",
         "csh2Index": 101.21524806,
         "overnightBenchmarkIndex": 101.01376178,
@@ -45,16 +39,22 @@
         "csh2Index": 101.25207453,
         "overnightBenchmarkIndex": 101.01990398,
         "gapPercent": 0.22982655
+      },
+      {
+        "date": "2026-09-11",
+        "csh2Index": 101.25207453,
+        "overnightBenchmarkIndex": 101.02604935,
+        "gapPercent": 0.2237296
       }
     ],
     "trendExamplesOmitted": true,
     "rateDate": "2026-09-10",
     "overnightRatePercent": 2.19,
     "currentOvernightAnnualRatePercent": 2.24518234,
-    "csh2ExcessAnnualRatePercent": 0.38028723,
-    "csh2AnnualRatePercent": 2.6340077,
-    "csh2AnnualRateLowPercent": 2.5291144,
-    "csh2AnnualRateHighPercent": 2.738901,
+    "csh2ExcessAnnualRatePercent": 0.38185929,
+    "csh2AnnualRatePercent": 2.63561507,
+    "csh2AnnualRateLowPercent": 2.53072177,
+    "csh2AnnualRateHighPercent": 2.74050837,
     "modelErrorAnnualRatePercent": 0.1048933,
     "errorEvaluationDays": 90,
     "errorValidationFrom": "2024-01-02",
