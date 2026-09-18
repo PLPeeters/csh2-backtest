@@ -3,7 +3,7 @@
   "valuationDate": "2026-09-17",
   "sourceData": {
     "prices": "9ce991a463424536",
-    "rates": "3aed03d185357587"
+    "rates": "8ae026ae325b3f5c"
   },
   "configuration": {
     "lookbackDays": 180,
@@ -48,13 +48,13 @@
       }
     ],
     "trendExamplesOmitted": true,
-    "rateDate": "2026-09-16",
-    "overnightRatePercent": 2.441,
-    "currentOvernightAnnualRatePercent": 2.50569672,
+    "rateDate": "2026-09-17",
+    "overnightRatePercent": 2.44,
+    "currentOvernightAnnualRatePercent": 2.5046575,
     "csh2ExcessAnnualRatePercent": 0.38418318,
-    "csh2AnnualRatePercent": 2.89950636,
-    "csh2AnnualRateLowPercent": 2.79468713,
-    "csh2AnnualRateHighPercent": 3.00432559,
+    "csh2AnnualRatePercent": 2.89846315,
+    "csh2AnnualRateLowPercent": 2.79364392,
+    "csh2AnnualRateHighPercent": 3.00328238,
     "modelErrorAnnualRatePercent": 0.10481923,
     "errorEvaluationDays": 90,
     "errorValidationFrom": "2024-01-02",
