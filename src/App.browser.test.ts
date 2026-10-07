@@ -1,6 +1,6 @@
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.svelte';
 import publication from './assets/data/current-rate-model.json';
 import { createBacktestController } from './lib/state/backtest.svelte';
@@ -9,7 +9,12 @@ import { createFlowId } from './lib/services/storage';
 import type { CalculationSettings, CalculationView, MarketDataBundle } from './lib/types';
 
 describe('CSH2 application inputs', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    // Keep the example's October premium scheduled without freezing browser timers.
+    vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
+  });
+  afterEach(() => vi.useRealTimers());
 
   it('places best-account inputs in the future outlook beside projections', async () => {
     render(App);
@@ -613,11 +618,11 @@ describe('CSH2 application inputs', () => {
     await page.getByText('Costs and calculation details', { exact: true }).click();
     await expect.element(page.getByText('CSH2 backtest first broke even after')).toBeVisible();
     await expect.element(page.getByText('CSH2 backtest first matched €STR after')).toBeVisible();
-    const updatedTimes = page.getByText(/ago$/, { exact: true });
+    const updatedTimes = page.getByLabelText(/freshness timestamp /);
     await expect.element(updatedTimes).toHaveLength(3);
-    await expect.element(updatedTimes.nth(0)).toHaveTextContent(/ago$/);
-    await expect.element(updatedTimes.nth(1)).toHaveTextContent(/ago$/);
-    await expect.element(updatedTimes.nth(2)).toHaveTextContent(/ago$/);
+    await expect.element(updatedTimes.nth(0)).toHaveTextContent(/^(?:.+ ago|in .+)$/);
+    await expect.element(updatedTimes.nth(1)).toHaveTextContent(/^(?:.+ ago|in .+)$/);
+    await expect.element(updatedTimes.nth(2)).toHaveTextContent(/^(?:.+ ago|in .+)$/);
     await expect.element(page.getByText('€STR rate last updated')).toBeVisible();
     await expect.element(page.getByText('(source: ECB statistics)')).toBeVisible();
     await expect.element(page.getByRole('tooltip')).toHaveLength(0);
@@ -744,9 +749,15 @@ describe('CSH2 application inputs', () => {
     const chart = page.getByLabelText('Time-weighted performance of CSH2, gross Euro overnight rates, and your account, excluding external cash flows');
     const initialChart = await chart.screenshot({ base64: true, save: false });
 
-    await page.getByLabelText('Your account base annual rate (%)').fill('2.5');
+    const baseRate = page.getByLabelText('Your account base annual rate (%)');
+    await baseRate.click();
+    // Typing leaves the edit uncommitted; fill() also triggers change and recalculates.
+    await userEvent.keyboard('{selectall}{Backspace}2.5');
+    await expect.element(baseRate).toHaveValue(2.5);
     await expect.element(page.getByRole('heading', { name: 'Calculation settings' })).toBeVisible();
     await expect.element(staleMessage).toBeVisible();
+    await userEvent.tab();
+    await expect.element(staleMessage).not.toBeInTheDocument();
 
     await page.getByRole('group', { name: 'CSH2 gain tax regime' }).getByRole('button', { name: '10% CGT (no exemption)' }).click();
     await expect.element(staleMessage).not.toBeInTheDocument();
