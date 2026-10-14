@@ -3,7 +3,7 @@
   "valuationDate": "2026-10-13",
   "sourceData": {
     "prices": "df55b49ee78cb66c",
-    "rates": "22056e1cc08cb8bc"
+    "rates": "e840d573400bf491"
   },
   "configuration": {
     "lookbackDays": 180,
@@ -48,7 +48,7 @@
       }
     ],
     "trendExamplesOmitted": true,
-    "rateDate": "2026-10-12",
+    "rateDate": "2026-10-13",
     "overnightRatePercent": 2.439,
     "currentOvernightAnnualRatePercent": 2.50361829,
     "csh2ExcessAnnualRatePercent": 0.39236701,
