@@ -62,6 +62,63 @@ test('publishes sorted provenance and lets direct backfill observations win over
   assert.match(publication.adaptations, /Selected.*deduplicated.*normalized/i);
 });
 
+test('keeps valid archived observations when the backfill view omits its earliest months', () => {
+  const archivedIndices = Object.fromEntries([
+    ['2015-02', 74.1], ['2015-03', 74.15], ['2015-04', 74.43], ['2015-05', 74.55]
+  ]);
+  const existing = { base: '2025 = 100', indices: archivedIndices };
+  const backfill = { facts: [
+    ...[['Avril', 74.43], ['Mai', 74.55], ['Juin', 74.66]].map(([month, value]) => ({ Année: '2015', Mois: `${month} 2015`, 'Année de base': '2025 = 100', 'Indice des prix à la consommation': value }))
+  ] };
+  const current = { facts: [
+    { Year: '2015', Month: 'June 2015', 'Base year': '2025 = 100', 'Global Index': 'Global Index', 'Level 1': null, 'Consumer price index': 74.66 }
+  ] };
+
+  const publication = publishCpi(existing, backfill, current, '2026-10-31T00:00:00.000Z');
+
+  assert.deepEqual(publication.indices, { '2015-02': 74.1, '2015-03': 74.15, '2015-04': 74.43, '2015-05': 74.55, '2015-06': 74.66 });
+  assert.equal(publication.base, '2025 = 100');
+});
+
+test('validates the stored base before using its history alongside a backfill', () => {
+  const existing = { base: '2013 = 100', indices: { '2015-02': 74.1, '2015-03': 74.15, '2015-04': 74.43 } };
+  const backfill = { facts: [
+    { Année: '2015', Mois: 'Avril 2015', 'Année de base': '2025 = 100', 'Indice des prix à la consommation': 74.43 }
+  ] };
+  const current = { facts: [
+    { Year: '2015', Month: 'April 2015', 'Base year': '2025 = 100', 'Global Index': 'Global Index', 'Level 1': null, 'Consumer price index': 74.43 }
+  ] };
+
+  assert.throws(() => publishCpi(existing, backfill, current, '2026-10-31T00:00:00.000Z'), /Stored Statbel CPI publication has unexpected base 2013 = 100/);
+});
+
+test('rejects a backfill without an archived prefix when its first month is after February 2015', () => {
+  const backfill = { facts: [
+    { Année: '2015', Mois: 'Avril 2015', 'Année de base': '2025 = 100', 'Indice des prix à la consommation': 74.43 }
+  ] };
+  const current = { facts: [
+    { Year: '2015', Month: 'April 2015', 'Base year': '2025 = 100', 'Global Index': 'Global Index', 'Level 1': null, 'Consumer price index': 74.43 }
+  ] };
+
+  assert.throws(() => publishCpi(undefined, backfill, current, '2026-10-31T00:00:00.000Z'), /history must begin at 2015-02/);
+});
+
+test('does not use archived observations to conceal a gap inside the backfill range', () => {
+  const existing = { base: '2025 = 100', indices: {
+    '2015-02': 74.1, '2015-03': 74.15, '2015-04': 74.43, '2015-05': 74.55
+  } };
+  const backfill = { facts: [
+    { Année: '2015', Mois: 'Février 2015', 'Année de base': '2025 = 100', 'Indice des prix à la consommation': 74.1 },
+    { Année: '2015', Mois: 'Mars 2015', 'Année de base': '2025 = 100', 'Indice des prix à la consommation': 74.15 },
+    { Année: '2015', Mois: 'Mai 2015', 'Année de base': '2025 = 100', 'Indice des prix à la consommation': 74.55 }
+  ] };
+  const current = { facts: [
+    { Year: '2015', Month: 'May 2015', 'Base year': '2025 = 100', 'Global Index': 'Global Index', 'Level 1': null, 'Consumer price index': 74.55 }
+  ] };
+
+  assert.throws(() => publishCpi(existing, backfill, current, '2026-10-31T00:00:00.000Z'), /backfill history is missing monthly observation 2015-04/);
+});
+
 test('rejects malformed stored indices', () => {
   const current = { facts: [
     ...[['June', 102.95], ['July', 103.6], ['August', 104.01]].map(([month, value]) => ({ Year: '2026', Month: `${month} 2026`, 'Base year': '2025 = 100', 'Global Index': 'Global Index', 'Level 1': null, 'Consumer price index': value }))

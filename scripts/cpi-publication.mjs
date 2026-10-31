@@ -90,11 +90,9 @@ function assertValidIndices(indices, label) {
   }
 }
 
-function assertCompleteHistory(indices, label) {
+function assertContinuousHistory(indices, label) {
   const months = Object.keys(indices).sort();
-  if (months[0] !== '2015-02') {
-    throw new Error(`Statbel CPI ${label} history must begin at 2015-02; found ${months[0] ?? 'no observations'}.`);
-  }
+  if (!months.length) throw new Error(`Statbel CPI ${label} history contains no monthly observations.`);
   for (let index = 1; index < months.length; index += 1) {
     const [year, month] = months[index - 1].split('-').map(Number);
     const expected = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -102,17 +100,31 @@ function assertCompleteHistory(indices, label) {
   }
 }
 
+function assertCompleteHistory(indices, label) {
+  const firstMonth = Object.keys(indices).sort()[0];
+  if (firstMonth !== '2015-02') {
+    throw new Error(`Statbel CPI ${label} history must begin at 2015-02; found ${firstMonth ?? 'no observations'}.`);
+  }
+  assertContinuousHistory(indices, label);
+}
+
 export function publishCpi(existingEnvelope, backfillResponse, currentResponse, timestamp) {
   const hasExistingIndices = existingEnvelope?.indices && typeof existingEnvelope.indices === 'object' && Object.keys(existingEnvelope.indices).length;
-  if (hasExistingIndices && !backfillResponse && existingEnvelope.base !== CPI_BASE) {
+  if (hasExistingIndices && existingEnvelope.base !== CPI_BASE) {
     throw new Error(`Stored Statbel CPI publication has unexpected base ${existingEnvelope.base ?? 'unknown'}; expected ${CPI_BASE}.`);
   }
-  const reference = backfillResponse
-    ? parseBackfillCpiFacts(backfillResponse)
-    : hasExistingIndices
-      ? (assertValidIndices(existingEnvelope.indices, 'stored reference'), sorted(existingEnvelope.indices))
-      : undefined;
+  if (hasExistingIndices) assertValidIndices(existingEnvelope.indices, 'stored reference');
+  const stored = hasExistingIndices ? sorted(existingEnvelope.indices) : undefined;
+  let reference = backfillResponse ? parseBackfillCpiFacts(backfillResponse) : stored;
   if (!reference) throw new Error('Statbel CPI publication requires a backfill response or stored reference indices.');
+  if (backfillResponse) {
+    assertContinuousHistory(reference, 'backfill');
+    if (stored) {
+      const firstBackfillMonth = Object.keys(reference).sort()[0];
+      const archivedPrefix = Object.fromEntries(Object.entries(stored).filter(([month]) => month < firstBackfillMonth));
+      reference = sorted({ ...archivedPrefix, ...reference });
+    }
+  }
   assertCompleteHistory(reference, backfillResponse ? 'backfill' : 'stored reference');
   const current = parseCurrentCpiFacts(currentResponse);
   const merged = mergeCpiIndices(reference, current);

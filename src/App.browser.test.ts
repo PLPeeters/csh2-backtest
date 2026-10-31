@@ -373,8 +373,8 @@ describe('CSH2 application inputs', () => {
     await expect.element(methodology.getByText(/not Amundi’s tracking error/)).toBeVisible();
     await page.getByRole('button', { name: 'Close methodology' }).click();
     await expect.element(page.getByRole('dialog', { name: 'How we estimate today’s CSH2 return' })).toHaveLength(0);
-    expect(renderedStyles(renderedDocument.documentElement).overflow).not.toBe('hidden');
-    expect(renderedStyles(renderedDocument.body).overflow).not.toBe('hidden');
+    await expect.poll(() => renderedStyles(renderedDocument.documentElement).overflow).not.toBe('hidden');
+    await expect.poll(() => renderedStyles(renderedDocument.body).overflow).not.toBe('hidden');
     await expect.element(page.getByText('Enter the best available rate', { exact: true })).toBeVisible();
     const baseRate = page.getByLabelText('Best available base annual rate (%)');
     const fidelityPremium = page.getByLabelText('Best available fidelity premium (%)');
