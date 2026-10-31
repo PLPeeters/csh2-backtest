@@ -5,7 +5,7 @@
   "currentViewId": "86586e27-90ac-47c6-87ce-64b63194e605",
   "license": "https://statbel.fgov.be/en/cc-40",
   "adaptations": "Selected the all-items rows, deduplicated observations, and normalized the result into one monthly series.",
-  "cachedAt": "2026-09-02T08:00:00.394Z",
+  "cachedAt": "2026-10-31T18:06:49.590Z",
   "base": "2025 = 100",
   "indices": {
     "2015-02": 74.1,
@@ -146,6 +146,8 @@
     "2026-05": 103.26,
     "2026-06": 102.95,
     "2026-07": 103.6,
-    "2026-08": 104.01
+    "2026-08": 104.01,
+    "2026-09": 104.42,
+    "2026-10": 105.37
   }
 }
