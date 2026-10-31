@@ -8,13 +8,37 @@ import { duration } from './lib/services/formatters';
 import { createFlowId } from './lib/services/storage';
 import type { CalculationSettings, CalculationView, MarketDataBundle } from './lib/types';
 
+const cpiTestCoverage = vi.hoisted(() => ({ throughMonth: undefined as string | undefined }));
+
+vi.mock('./lib/services/market-data', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/services/market-data')>();
+  return {
+    ...actual,
+    loadMarketData: async () => {
+      const market = await actual.loadMarketData();
+      const { throughMonth } = cpiTestCoverage;
+      if (!throughMonth) return market;
+      const indices = Object.fromEntries(Object.entries(market.cpiData.indices).filter(([month]) => month <= throughMonth));
+      return {
+        ...market,
+        version: `${market.version}|cpi-through-${throughMonth}`,
+        cpiData: { ...market.cpiData, cachedAt: `${throughMonth}-15T00:00:00.000Z`, indices }
+      };
+    }
+  };
+});
+
 describe('CSH2 application inputs', () => {
   beforeEach(() => {
     localStorage.clear();
+    cpiTestCoverage.throughMonth = undefined;
     // Keep the example's October premium scheduled without freezing browser timers.
     vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    cpiTestCoverage.throughMonth = undefined;
+    vi.useRealTimers();
+  });
 
   it('places best-account inputs in the future outlook beside projections', async () => {
     render(App);
@@ -710,6 +734,7 @@ describe('CSH2 application inputs', () => {
   });
 
   it('does not show the obsolete pre-coverage caveat in real results', async () => {
+    cpiTestCoverage.throughMonth = '2026-06';
     localStorage.setItem('csh2-belgium-flows-v1', JSON.stringify([{ date: '2015-04-01', type: 'inflow', amount: '5000', interestPayment: false }]));
     localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ returnMode: 'real' }));
     render(App);
@@ -717,6 +742,20 @@ describe('CSH2 application inputs', () => {
     const realCoverageNote = page.getByText(/^Inflation-adjusted returns use Belgian CPI\./);
     await expect.element(realCoverageNote).toBeVisible();
     expect(realCoverageNote.element().textContent).toMatch(/^Inflation-adjusted returns use Belgian CPI\.\s+The latest portion is provisional and extrapolated from trailing 12-month observed inflation after \d{4}-\d{2}\.$/);
+    await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toHaveLength(0);
+    const metric = page.getByText('Annualized outcome (MWR)', { exact: true }).element().closest('tr')!;
+    expect(metric.querySelector('td:nth-child(2)')!.textContent).not.toBe('—');
+  });
+
+  it('omits the provisional CPI note when published coverage reaches the valuation date', async () => {
+    cpiTestCoverage.throughMonth = '2026-10';
+    localStorage.setItem('csh2-belgium-flows-v1', JSON.stringify([{ date: '2015-04-01', type: 'inflow', amount: '5000', interestPayment: false }]));
+    localStorage.setItem('csh2-belgium-settings-v1', JSON.stringify({ returnMode: 'real' }));
+    render(App);
+
+    const realCoverageNote = page.getByText(/^Inflation-adjusted returns use Belgian CPI\./);
+    await expect.element(realCoverageNote).toBeVisible();
+    expect(realCoverageNote.element().textContent).toBe('Inflation-adjusted returns use Belgian CPI.');
     await expect.element(page.getByText(/full measurement interval begins before CPI coverage in January 2016/)).toHaveLength(0);
     const metric = page.getByText('Annualized outcome (MWR)', { exact: true }).element().closest('tr')!;
     expect(metric.querySelector('td:nth-child(2)')!.textContent).not.toBe('—');

@@ -7,6 +7,10 @@ import { calculateBacktest, clearBacktestStageCache, createBacktestCalculator } 
 import { clearCurrentRateModelCache } from './current-rate-model-cache.mjs';
 
 const market = { data: prices, rateData: rates, cpiData: cpi, version: 'published-test-data' } as MarketDataBundle;
+const marketWithCpiThrough = (month: string): MarketDataBundle => {
+  const indices = Object.fromEntries(Object.entries(cpi.indices).filter(([observedMonth]) => observedMonth <= month));
+  return { ...market, version: `published-test-data-cpi-through-${month}`, cpiData: { ...cpi, indices } };
+};
 const flows: CashFlowDraft[] = [{ id: 'flow-1', date: '2026-01-02', type: 'inflow', amount: '10000', interestPayment: false }];
 const settings: CalculationSettings = {
   applyCapitalGainsExemption: true,
@@ -71,8 +75,9 @@ describe('bounded backtest stage cache', () => {
 
   it('changes return presentation in real mode without changing nominal euro economics', () => {
     const calculator = createBacktestCalculator();
-    const nominal = calculator.calculate(flows, settings, market, '2026-08-20');
-    const real = calculator.calculate(flows, changedSettings({ returnMode: 'real' }), market, '2026-08-20');
+    const cpiThroughMay = marketWithCpiThrough('2026-05');
+    const nominal = calculator.calculate(flows, settings, cpiThroughMay, '2026-08-20');
+    const real = calculator.calculate(flows, changedSettings({ returnMode: 'real' }), cpiThroughMay, '2026-08-20');
 
     expect(real.result.csh2MoneyWeightedReturn).not.toBe(nominal.result.csh2MoneyWeightedReturn);
     expect(real.result.netLiquidationValue).toBe(nominal.result.netLiquidationValue);
@@ -80,6 +85,7 @@ describe('bounded backtest stage cache', () => {
     expect(real.result.terminalCgt).toBe(nominal.result.terminalCgt);
     expect(real.result.observedHoldingPeriods).toEqual(nominal.result.observedHoldingPeriods);
     expect(real.returnSeries.portfolioValue).toEqual(nominal.returnSeries.portfolioValue);
+    expect(real.returnSeries.timeWeighted.csh2.some((point) => point.cpiStatus === 'interpolated')).toBe(true);
     expect(real.returnSeries.timeWeighted.csh2.some((point) => point.cpiStatus === 'extrapolated')).toBe(true);
     expect(real.returnSeries.timeWeighted.projected?.csh2.at(-1)?.cpiStatus).toBe('extrapolated');
     expect(real.returnSeries.timeWeighted.projected?.account.at(-1)?.cpiStatus).toBe('extrapolated');
