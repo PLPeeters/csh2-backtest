@@ -1,6 +1,6 @@
 {
   "source": "Google Finance historical data, with daily Yahoo Finance updates",
-  "cachedAt": "2026-11-22T02:47:00.600Z",
+  "cachedAt": "2026-11-23T03:26:03.460Z",
   "prices": {
     "2015-03-13": {
       "open": 100,
@@ -18392,6 +18392,11 @@
       "fallbackSource": "2026-11-20"
     },
     "2026-11-22": {
+      "close": 110.58000183105469,
+      "isFallback": true,
+      "fallbackSource": "2026-11-20"
+    },
+    "2026-11-23": {
       "close": 110.58000183105469,
       "isFallback": true,
       "fallbackSource": "2026-11-20"
